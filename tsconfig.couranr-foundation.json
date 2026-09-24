@@ -12,6 +12,8 @@
     "lib/couranr/payments/**/*.ts",
     "lib/couranr/fulfillment/**/*.ts",
     "lib/couranr/dispatch/**/*.ts",
+    "lib/couranr/routeRuns/**/*.ts",
+    "app/api/couranr/merchant/route-runs/**/*.ts",
     "app/api/couranr/delivery-requests/**/*.ts",
     "app/api/couranr/operations/delivery-requests/**/*.ts",
     "app/api/couranr/stripe/**/*.ts"

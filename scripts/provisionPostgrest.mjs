@@ -41,8 +41,9 @@
  */
 import { createHash } from "node:crypto";
 import { execFileSync } from "node:child_process";
-import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync, chmodSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync, chmodSync, mkdtempSync } from "node:fs";
 import path from "node:path";
+import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -83,6 +84,33 @@ async function json(url, headers) {
   const res = await fetch(url, { headers });
   if (!res.ok) throw new Error(`${res.status} ${res.statusText} — ${url}`);
   return res.json();
+}
+
+/** Extract only the verified executable into memory, never a container rootfs.
+ * Official image directories can be read-only; extracting their permissions
+ * made non-root cleanup fail with EACCES. It also needlessly exposed callers
+ * to unrelated image symlinks. A private temporary directory contains only
+ * our archive; tar writes the one explicitly named regular member to stdout.
+ */
+export function postgrestFromLayer(buffer, expectedDigest) {
+  const digest = `sha256:${createHash("sha256").update(buffer).digest("hex")}`;
+  if (digest !== expectedDigest) throw new Error("PostgREST layer digest mismatch");
+  const work = mkdtempSync(path.join(tmpdir(), "couranr-postgrest-"));
+  try {
+    const archive = path.join(work, "layer.tar.gz");
+    writeFileSync(archive, buffer, { mode: 0o600 });
+    const entries = execFileSync("tar", ["-tzf", archive], { encoding: "utf8", maxBuffer: 8 * 1024 * 1024 }).split("\n");
+    const entry = entries.find((name) => name === "bin/postgrest" || name === "./bin/postgrest");
+    if (!entry) return null;
+    const binary = execFileSync("tar", ["-xOzf", archive, "--", entry], { maxBuffer: 256 * 1024 * 1024 });
+    // Links/directories produce no executable bytes. Never follow or restore them.
+    if (binary.length < 20 || binary[0] !== 0x7f || binary[1] !== 0x45 || binary[2] !== 0x4c || binary[3] !== 0x46) {
+      throw new Error("PostgREST image member is not an ELF executable");
+    }
+    return binary;
+  } finally {
+    rmSync(work, { recursive: true, force: true });
+  }
 }
 
 async function main() {
@@ -130,14 +158,9 @@ async function main() {
     },
   );
 
-  const work = path.join(ROOT, ".tooling/.postgrest-pull");
-  rmSync(work, { recursive: true, force: true });
-  mkdirSync(work, { recursive: true });
+  let executable = null;
 
-  const rootfs = path.join(work, "rootfs");
-  mkdirSync(rootfs, { recursive: true });
-
-  for (const [i, layer] of manifest.layers.entries()) {
+  for (const layer of manifest.layers) {
     const res = await fetch(
       `https://registry-1.docker.io/v2/${IMAGE}/blobs/${layer.digest}`,
       { headers: auth, redirect: "follow" },
@@ -145,34 +168,15 @@ async function main() {
     if (!res.ok) throw new Error(`layer ${layer.digest}: ${res.status} ${res.statusText}`);
     const buf = Buffer.from(await res.arrayBuffer());
 
-    // Verify BEFORE extracting. The digest is what the manifest promised.
-    const got = `sha256:${createHash("sha256").update(buf).digest("hex")}`;
-    if (got !== layer.digest) {
-      throw new Error(`layer ${i} digest mismatch — manifest ${layer.digest}, downloaded ${got}`);
-    }
-
-    const tgz = path.join(work, `layer-${i}.tar.gz`);
-    writeFileSync(tgz, buf);
-    // Layers legitimately contain whiteouts and entries tar cannot restore as
-    // a non-root user; only the one file matters, so failures are tolerated
-    // and the presence check below is what decides success.
-    try {
-      execFileSync("tar", ["-xzf", tgz, "-C", rootfs], { stdio: "ignore" });
-    } catch {
-      /* partial extraction is fine — see above */
-    }
-    rmSync(tgz, { force: true });
+    // Verify before reading any archive member. No container directories or
+    // permissions are restored to the caller's filesystem.
+    const binary = postgrestFromLayer(buf, layer.digest);
+    if (binary) executable = binary;
   }
-
-  const found = path.join(rootfs, "bin/postgrest");
-  if (!existsSync(found)) {
-    throw new Error(`no /bin/postgrest in the ${IMAGE}:${TAG} layers`);
-  }
-
+  if (!executable) throw new Error(`no /bin/postgrest in the ${IMAGE}:${TAG} layers`);
   mkdirSync(path.dirname(target), { recursive: true });
-  writeFileSync(target, readFileSync(found));
+  writeFileSync(target, executable, { mode: 0o755 });
   chmodSync(target, 0o755);
-  rmSync(work, { recursive: true, force: true });
 
   const version = execFileSync(target, ["--version"], { encoding: "utf8" }).trim();
   // A dynamically linked binary would depend on the image's libc rather than

@@ -2,7 +2,7 @@ name: Route Run offline verification workspace
 on:
   pull_request:
     branches: [main]
-    paths: ['.github/workflows/route-run-offline-verification.yml']
+    paths: ['.github/workflows/route-run-offline-verification.yml', 'scripts/provisionPostgrest.mjs']
 permissions:
   contents: read
 concurrency:
@@ -30,7 +30,9 @@ jobs:
           node scripts/provisionPostgrest.mjs
           /tmp/couranr-browser-tools/postgrest --version > /tmp/couranr-browser-tools/version.txt
           cd /tmp/couranr-browser-tools
-          sha256sum postgrest > SHA256SUMS
+          cp "$(command -v node)" ./node
+          ./node --version > node-version.txt
+          sha256sum postgrest node > SHA256SUMS
       - uses: actions/upload-artifact@v4
         with:
           name: couranr-browser-tools-${{ github.event.pull_request.head.sha }}
