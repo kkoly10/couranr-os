@@ -8,7 +8,9 @@ on:
       - 'supabase/migrations/20260923200000_couranr_route_run_draft_foundation.sql'
       - 'supabase/rollbacks/20260923200000_couranr_route_run_draft_foundation.rollback.sql'
       - 'e2e/disposable/routeRunFoundation.mjs'
+      - 'tests/couranr-route-run-foundation.test.ts'
       - '.github/workflows/route-run-foundation.yml'
+      - '.github/workflows/ci.yml'
 permissions:
   contents: read
 concurrency:
