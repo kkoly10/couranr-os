@@ -123,13 +123,13 @@ describe("Draft-only integration guard", () => {
   const rollback = readFileSync(path.join(root, "supabase/rollbacks/20260923200000_couranr_route_run_draft_foundation.rollback.sql"), "utf8");
   it("creates no payment, driver or custody writer", () => {
     expect(sql).not.toMatch(/(?:insert into|update|delete from)\s+public\.couranr_(?:deliveries|delivery_requests|payment_obligations|service_plans|handoff_codes|delivery_proofs|drivers|delivery_assignments)\b/i);
-    expect(sql).toContain("check (route_state = 'draft')");
-    expect(sql).toContain("'bookingAvailable',false");
+    expect(sql).toMatch(/check\s*\(\s*route_state\s*=\s*'draft'\s*\)/i);
+    expect(sql).toMatch(/'bookingAvailable'\s*,\s*false/);
   });
   it("limits writes to tenant-validated RPCs and preserves draft history on rollback", () => {
-    expect(sql).toContain("security definer set search_path = ''");
-    expect(sql).toContain("status='active'");
-    expect(sql).toContain("role in ('owner','manager','dispatcher')");
+    expect(sql).toMatch(/security\s+definer\s+set\s+search_path\s*=\s*''/i);
+    expect(sql).toMatch(/status\s*=\s*'active'/i);
+    expect(sql).toMatch(/role\s+in\s*\(\s*'owner'\s*,\s*'manager'\s*,\s*'dispatcher'\s*\)/i);
     // Grant semantics must survive SQL formatting. The disposable DB suite
     // independently proves that even service_role cannot rewrite history.
     expect(sql).toMatch(/revoke\s+all\s+on\s+public\.couranr_route_runs\s*,[^;]*from\s+public\s*,\s*anon\s*,\s*authenticated\s*,\s*service_role\s*;/i);
