@@ -130,7 +130,11 @@ describe("Draft-only integration guard", () => {
     expect(sql).toContain("security definer set search_path = ''");
     expect(sql).toContain("status='active'");
     expect(sql).toContain("role in ('owner','manager','dispatcher')");
-    expect(sql).toContain("from public,anon,authenticated,service_role");
+    // Grant semantics must survive SQL formatting. The disposable DB suite
+    // independently proves that even service_role cannot rewrite history.
+    expect(sql).toMatch(/revoke\s+all\s+on\s+public\.couranr_route_runs\s*,[^;]*from\s+public\s*,\s*anon\s*,\s*authenticated\s*,\s*service_role\s*;/i);
+    expect(sql).toMatch(/grant\s+select\s+on\s+public\.couranr_route_runs\s*,[^;]*to\s+service_role\s*;/i);
+    expect(sql).not.toMatch(/grant\s+(?:all|insert|update|delete|truncate)\b[^;]*to\s+service_role\s*;/i);
     expect(rollback).toContain("route_draft_rollback_refuses_semantic_use");
   });
 });

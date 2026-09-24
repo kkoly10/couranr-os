@@ -5,118 +5,118 @@ Base reviewed: `28e54670f6a90c2604777aa3297c493725fa6a1e` (PR #98).
 ## Product contract
 
 Business-only, one common pickup, two to five separate single-destination
-requests, one merchant payer, explicit ordered stops. The Route Run is an
-aggregate; it must not redefine a Delivery. Existing `additional_stops = 0`,
+requests, one merchant payer, explicit ordered stops. The Route Run groups
+Deliveries; it does not redefine a Delivery. `additional_stops = 0`, immutable
 quote identity, tenancy, PIN, proof and payment contracts remain unchanged.
 No historical Route Saver or additional-stop price is revived.
 
-## What RR-001 implements
+## Implemented in RR-001
 
-- Strict draft input with only route ID, expected version, idempotency key,
-  title and ordered child request IDs. Browser price/driver/state fields are refused.
-- Route shell, immutable draft versions, ordered child references/snapshots,
-  and append-only audit data. Service-role callers have SELECT, not direct DML;
-  writes pass through service-role-only SECURITY DEFINER RPCs with empty search
-  paths and independently checked, locked active Business membership.
-- Owner/manager/dispatcher may save; other active members may read. An admin
-  profile is not permission to impersonate a merchant without membership.
-- Create, read and revise API at `/api/couranr/merchant/route-runs`.
-- The DB independently refuses foreign/duplicate children, customer payers,
-  non-draft requests, missing canonical quotes, and different pickup snapshots.
-- CAS revisions and fingerprinted idempotency. Replay returns the ORIGINAL
-  revision with current staleness information; it never rewrites history.
-- References use the exact immutable child quote IDs. The displayed total is
-  the sum of independent reference quotes, NOT a route offer or payable amount.
-- Changed request/manifest/quote identities are marked stale on reads.
-- Provider-free aggregate admission checks and settlement-recovery intent.
-  Unknown weight, funding, capacity or aggregate-value policy never becomes zero.
+Strict draft input: route ID, expected version, idempotency key, title and
+ordered child request IDs. Browser prices, driver IDs and states are refused.
 
-## What RR-001 deliberately does NOT implement
+Four additive tables store the route shell, immutable draft versions, ordered
+child references/snapshots, and append-only events. Service-role callers have
+SELECT, not direct DML. Writes use service-role-only SECURITY DEFINER RPCs with
+empty search paths and independently checked, locked active Business membership.
+Owner/manager/dispatcher may save; other active members may read. An admin
+profile alone does not permit merchant impersonation.
 
-There is no merchant Route Builder screen, route quote, route acceptance,
-resource reservation, payment capture, new child assignment state, common
-pickup credential, multi-stop custody, stop activation or route dispatch.
+GET/POST `/api/couranr/merchant/route-runs` reads/saves/revises drafts. SQL also
+refuses foreign or duplicate children, customer payers, submitted requests,
+missing canonical quotes, and differing pickup snapshots. CAS revisions and
+fingerprinted idempotency preserve history. Replay returns its ORIGINAL
+revision plus current staleness information, not a rewritten snapshot.
 
-`route_state` permits only `draft`. Every response includes `draftOnly: true`
-and `bookingAvailable: false`. Admission inspection ALWAYS includes
-`route_execution_not_released`. This is not an environment-variable activation
-switch: executable dispatch authority does not yet exist in this slice.
+The displayed total is the sum of immutable independent reference quotes, NOT
+a route offer or payable amount. Changed request, manifest or quote identities
+mark a child stale. Pure provider-free modules express aggregate admission and
+settlement-recovery intent. Unknown weight, funding, capacity or aggregate-value
+policy never becomes zero. These modules authorize no financial or custody act.
 
-A child in a draft is NOT claimed. A merchant can still submit it separately.
-That makes the saved route stale and prevents it from becoming implicit route
-ownership. A later booking transaction must revalidate and claim ALL children
-under locks, using one operational owner across standalone and route lanes.
+## Not implemented in this slice
 
-The draft references existing Business drafts. It does not create N requests
-behind a user's back. The later builder will reuse existing canonical create/
-quote commands with explicit per-child idempotency, then group those drafts.
+No merchant Route Builder screen, accepted route quote, booking, resource
+reservation, payment capture, new child assignment state, common pickup
+credential, multi-stop custody, stop activation or route dispatch exists here.
 
-## Database invariants and rollback
+The database permits only `route_state = 'draft'`. Responses contain
+`draftOnly: true` and `bookingAvailable: false`. Admission inspection ALWAYS
+includes `route_execution_not_released`. This is not an environment-variable
+blocker; execution authority has not been built yet.
+
+Draft membership does NOT claim a child. A merchant can still submit it
+separately, making the draft stale. Later booking must revalidate and claim ALL
+children under locks against both standalone and route dispatch. This slice
+references existing Business drafts instead of silently creating N requests.
+The future builder must reuse canonical creation/quote commands with explicit
+per-child idempotency before grouping them.
+
+## Database / rollback
 
 Migration: `20260923200000_couranr_route_run_draft_foundation.sql`.
-No existing table/function/trigger is replaced and no canonical row is updated.
-The four new tables have RLS enabled with no browser policies. Explicit REVOKE
-also neutralizes permissive Supabase default grants. Internal helpers are not
-executable by browser or service-role callers. Public RPCs expose only the
-narrow validated draft actions. Current version references its immutable
-version via a deferred composite FK.
+No existing table/function/trigger is replaced; no canonical row is updated.
+All four tables have RLS and no browser policies. Explicit REVOKE neutralizes
+permissive defaults. Internal helpers are not executable by browser or
+service-role callers; the public RPCs expose only validated draft actions.
+A deferred composite FK binds the shell to its current immutable version.
 
-Rollback first refuses ANY saved draft/version/event/stop, then drops only this
-new unused substrate. Do not weaken the semantic-use guard to make rollback
-convenient. Once used, disable the new UI/API and retain history; repair forward.
+The rollback refuses ANY saved draft/version/event/stop, then drops only unused
+new objects. Do not delete semantic history or weaken this guard. After use,
+disable the new surface, retain evidence and repair forward.
 
-## Deployment
-
-Do not merge as a claim that multi-stop delivery is launch-ready. Apply the
-reviewed additive migration before exposing its API/UI. Do not apply this
-migration to production merely to test it. The disposable test runs the real
-migration chain and its own fixtures; it requires no production credentials.
-No Vercel preview is needed for this foundation. Current `vercel.json` already
-disables branch deployments and permits only main.
-
-## Acceptance
+## Validation and release evidence
 
 - `tests/couranr-route-run-foundation.test.ts`: strict inputs, aggregate safety,
-  unknown funding, partial capture recovery intent, no accidental dispatch.
+  unknown funding, partial-capture recovery intent and no accidental dispatch.
 - `node e2e/disposable/routeRunFoundation.mjs`: full migration replay; forward /
-  empty rollback / forward; actor and table ACLs; mixed tenant/payer/pickup
-  refusals; CAS and idempotency; two actual database connections racing to
-  revise; canonical-row preservation; stale references; semantic rollback guard.
-- `.github/workflows/route-run-foundation.yml`: the disposable DB gate runs the
-  exact PR head using local PostgreSQL, no cloud DB or provider credentials.
-- Existing CI remains responsible for lint/typechecks/authority fences/tests/
-  application build. Passing the new focused suite is not passing the whole app.
+  empty rollback / forward; role and table ACLs; mixed tenant/payer/pickup
+  refusals; CAS and idempotency; a real two-connection revision race; unchanged
+  canonical rows; stale references; semantic rollback refusal.
+- `.github/workflows/route-run-foundation.yml` tests the exact PR head using
+  local PostgreSQL, no production credentials or paid providers.
+- Standard CI checks the same exact PR head: lint, typechecks, authority fences,
+  full tests and application build. Focused checks alone do not close the batch.
 
-Record executed results at the exact commit in the PR; authored tests are not
-proof of execution. SQL-only validation is not browser or physical proof.
+Record executed results at the exact commit in the PR. Authored tests are not
+execution evidence. SQL tests are not browser or physical-delivery proof.
 
-## Next slices (do not bypass prerequisites)
+Do not merge as a claim of finished multi-stop. Apply the additive migration
+before exposing the new API/UI, never to production merely for test execution.
 
-1. Resolve/reverify the existing Help problem-report audience isolation and
-   returned-delivery refund-recovery reachability findings before route execution.
-2. Owner approves aggregate cargo/value and service-day limits. No route value
-   ceiling was invented here. Per-child $500 remains distinct from route exposure.
-3. Authoritative ordered routing and immutable ACCEPTED route versions: shared
-   pickup plus leg evidence, conservative time including service dwell, exact
-   child quote identities, rate-limited/cost-guarded provider calls. Reordering
-   after acceptance creates a reviewed revision, never edits accepted evidence.
-4. One operational resource owner shared with normal dispatch; route children
-   are excluded structurally from independent automation. Stable lock order and
-   reservation fencing must cover TTL expiry, retries and manual overrides.
-5. Durable multi-obligation settlement saga: all children authorized first;
-   unknown provider outcome => reconcile only; definitive partial failure =>
-   governed compensation; no physical start before all funding/assignments exist.
-6. Route-scoped long-lived assignment plus truthful per-child `route_reserved`
-   assignments. Extend existing validators/constraints together, not just enums.
-   Completing a child cannot release route-held resources.
-7. Route pickup credential plus child-specific evidence and per-package
-   disposition. Physical custody is not atomic with SQL: record verified partial
-   loading honestly, and block departure until all cargo is accounted for.
-8. Sequential stop execution, independent recipient credentials/tracking/help,
-   exception ownership, and resource release only after custody is fully closed.
-   Money recovery remains visible after physical completion.
-9. Merchant builder and route/driver/Operations views over these authorities;
-   disposable multi-actor browser tests; then a real two-stop physical pilot.
+**Observed cost-control discrepancy:** the existing `vercel.json` contains a
+branch-disable configuration, yet Vercel created previews for the first three
+branch heads. Verify the project/Git integration before further development
+pushes. Repository configuration or skip markers are not proof that builds were
+suppressed. Production has not been changed by RR-001.
+
+## Next slices and gates
+
+1. Resolve/reverify Help problem-report audience isolation and returned-delivery
+   refund-recovery reachability before route execution.
+2. Obtain owner approval for aggregate value/cargo and service-day policy. No
+   aggregate declared-value ceiling is invented here; the per-child $500 cap
+   does not represent route exposure.
+3. Add authoritative ordered routing and immutable ACCEPTED route versions:
+   shared pickup, leg evidence, service dwell, exact child quotes, budgeted
+   provider calls. Reordering accepted work creates a reviewed new version.
+4. Create one operational resource owner shared with ordinary dispatch. Route
+   children must be structurally excluded from independent automation. Cover
+   stable lock order, lease expiry, fencing, retries and manual overrides.
+5. Implement durable multi-obligation settlement: all authorizations first;
+   unknown outcome means reconcile only; definitive partial failure means
+   governed compensation. No physical start before funding and assignment exist.
+6. Add the route's long-lived assignment and truthful `route_reserved` child
+   assignments. Update constraints and validators together. Child completion
+   must not release route-held driver/vehicle resources.
+7. Add common pickup credential, per-child evidence and per-package disposition.
+   Physical custody is not atomic with SQL: record partial loading truthfully
+   and block departure until all cargo is accounted for.
+8. Add sequential stop execution, isolated recipient credentials/tracking/help,
+   exception ownership and release only when all custody is closed. Money
+   recovery remains reachable after physical completion.
+9. Build merchant/driver/Operations route views over those authorities; test a
+   disposable multi-actor browser journey, then a real two-stop physical pilot.
 
 Website Tools, Consumer multi-stop, multiple pickups, mixed payers, optimization,
-automatic route discounts and group tipping remain out of this program's V1.
+automatic route discounts and group tipping remain outside this V1.
