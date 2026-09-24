@@ -3,10 +3,11 @@
   "git": {
     "deploymentEnabled": {
       "*": false,
-      "main": true
+      "main": true,
+      "feat/business-route-run-foundation": false
     }
   },
-  "ignoreCommand": "git diff --quiet HEAD^ HEAD -- ':!*.md' ':!docs/*'",
+  "ignoreCommand": "if [ \"$VERCEL_GIT_COMMIT_REF\" = \"feat/business-route-run-foundation\" ]; then exit 0; fi; git diff --quiet HEAD^ HEAD -- ':!*.md' ':!docs/*'",
   "crons": [
     {
       "path": "/api/couranr/internal/automation/tick",
