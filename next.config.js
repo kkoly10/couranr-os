@@ -37,10 +37,49 @@ const nextConfig = {
   async headers() {
     // These path segments are bearer capabilities. A same-origin navigation
     // would otherwise send the full token URL as Referer to another route.
-    return ["/help/:token", "/track/:token"].map((source) => ({
-      source,
-      headers: [{ key: "Referrer-Policy", value: "no-referrer" }],
-    }));
+    const noIndexSources = [
+      // Operational, account, legacy-product, and API-token surfaces are not
+      // public search landing pages. Keep these crawlable so crawlers can read
+      // the noindex directive rather than relying on robots.txt exclusion.
+      "/admin/:path*",
+      "/app/:path*",
+      "/operations/:path*",
+      "/driver/:path*",
+      "/internal/:path*",
+      "/dashboard/:path*",
+      "/auto/:path*",
+      "/docs/:path*",
+      "/build/:path*",
+      "/delivery/:path*",
+      "/policy/:path*",
+      "/auth/:path*",
+      "/login",
+      "/signup",
+      "/portal",
+      "/privacy",
+      "/terms",
+      "/courier/:path*",
+      "/send",
+      "/estimate",
+      "/request/:path*",
+      "/sign-in",
+      "/sign-up",
+      "/track/:path*",
+      "/help/:path*",
+      "/pay/:path*",
+      "/tip-return",
+    ];
+
+    return [
+      ...noIndexSources.map((source) => ({
+        source,
+        headers: [{ key: "X-Robots-Tag", value: "noindex, nofollow" }],
+      })),
+      ...["/help/:token", "/track/:token"].map((source) => ({
+        source,
+        headers: [{ key: "Referrer-Policy", value: "no-referrer" }],
+      })),
+    ];
   },
 };
 

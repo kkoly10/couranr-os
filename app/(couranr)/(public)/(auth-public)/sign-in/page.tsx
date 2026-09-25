@@ -2,8 +2,9 @@ import * as React from "react";
 import Image from "next/image";
 import { SignInForm } from "@/components/couranr/auth/SignInForm";
 import { Wordmark } from "@/components/couranr/shell/parts";
+import { createNoIndexPublicMetadata } from "@/lib/couranr/public/seo";
 
-export const metadata = { title: "Sign in — Couranr" };
+export const metadata = createNoIndexPublicMetadata({ title: "Sign in — Couranr", description: "Sign in to Couranr." });
 
 /**
  * PUB-002 — sign in.

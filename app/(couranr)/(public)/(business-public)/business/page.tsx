@@ -1,5 +1,4 @@
 import Link from "next/link";
-import type { Metadata } from "next";
 import { Badge, Heading, Text } from "@/components/couranr/primitives";
 import { CouranrLogo } from "@/components/brand/CouranrLogo";
 import { AskCouranrLauncher } from "@/components/couranr/marketing/AskCouranr";
@@ -47,6 +46,7 @@ import {
   VEHICLE_CLASSES,
   VEHICLE_CLASS_LABELS,
 } from "@/lib/couranr/dispatch/states";
+import { createIndexablePublicMetadata } from "@/lib/couranr/public/seo";
 import {
   CATEGORY_BREADTH_PHOTOS,
   OUTCOME_PRIMARY_PHOTO,
@@ -110,11 +110,14 @@ import {
  * selects on them.
  */
 
-export const metadata: Metadata = {
+export const metadata = createIndexablePublicMetadata({
   title: "Couranr — local delivery infrastructure for local businesses",
   description:
     "Keep taking orders through the channels you already use. Couranr handles the delivery operation — from quote and payment through dispatch, tracking and proof.",
-};
+  path: "/business",
+  image: "/images/marketing/2026-08/w/mkt-2026-08-florist-wide-800.webp",
+  imageAlt: "Florist selecting stems from a wall of flowers in a local shop.",
+});
 
 /** MKT-002 §1 — all seven merchant-controlled channels, named. §10.4 requires every one. */
 const CHANNELS = [

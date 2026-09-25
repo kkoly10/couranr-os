@@ -14,12 +14,14 @@ import {
   LEGAL_DRAFTED_ON,
   legalDocumentHref,
 } from "@/lib/couranr/legal/registry";
+import { createIndexablePublicMetadata } from "@/lib/couranr/public/seo";
 
-export const metadata = {
+export const metadata = createIndexablePublicMetadata({
   title: "Couranr legal documents",
   description:
     "The Couranr terms, policies and shipment documents, each with the version Couranr records.",
-};
+  path: "/legal",
+});
 
 /**
  * The index of every Couranr legal and policy document.

@@ -1,7 +1,10 @@
-import type { Metadata } from "next";
 import Link from "next/link";
 import { MASTER_COPY } from "@/lib/couranr/public/masterSameDayCopy";
 import { MARKETS_PUBLIC_COPY_NEUTRAL } from "@/lib/couranr/public/governed";
+import {
+  createIndexablePublicMetadata,
+  couranrSearchStructuredData,
+} from "@/lib/couranr/public/seo";
 import { routeForScreen } from "@/lib/couranr/navigation";
 
 /**
@@ -29,17 +32,27 @@ import { routeForScreen } from "@/lib/couranr/navigation";
  * sentence is `MARKETS_PUBLIC_COPY_NEUTRAL`, which MKT-006 owns.
  */
 
-export const metadata: Metadata = {
+export const metadata = createIndexablePublicMetadata({
   title: "Couranr — local delivery, built around you",
   description: MASTER_COPY.hero_support,
-};
+  path: "/",
+  image: "/images/marketing/2026-08/w/mkt-2026-08-consumer-doorstep-handoff-wide-1200.webp",
+  imageAlt: "A person receives a small parcel and shopping bag at the front door of a home.",
+});
 
 export default function Page() {
   const sameDayHref = routeForScreen("PUB-013");
   const businessHref = routeForScreen("PUB-001");
+  const structuredData = couranrSearchStructuredData();
 
   return (
     <div className="cr-mkt">
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{
+          __html: JSON.stringify(structuredData).replace(/</g, "\\u003c"),
+        }}
+      />
       {/* ─── 1 ───────────────────────────── master-hero / split-story ─── */}
       {/* No eyebrow. The fidelity amendment §6 retires the shared marketing
           eyebrow and bans replacing it with a pill, chip or small-caps rule;

@@ -1,5 +1,4 @@
 import Link from "next/link";
-import type { Metadata } from "next";
 import { Text } from "@/components/couranr/primitives";
 import { ServiceCorridorMap } from "@/components/couranr/marketing/ServiceCorridorMap";
 import {
@@ -9,6 +8,7 @@ import {
   MILE_TIERS,
   dollars,
 } from "@/lib/couranr/public/governed";
+import { createIndexablePublicMetadata } from "@/lib/couranr/public/seo";
 
 /**
  * PUB-010 — service areas. MKT-001's four named markets plus "surrounding
@@ -31,10 +31,11 @@ import {
  * relationship the homepage only alludes to is stated.
  */
 
-export const metadata: Metadata = {
+export const metadata = createIndexablePublicMetadata({
   title: "Service areas — Couranr",
   description: MARKETS_PUBLIC_COPY,
-};
+  path: "/service-areas",
+});
 
 /*
  * There is deliberately NO per-market note here.

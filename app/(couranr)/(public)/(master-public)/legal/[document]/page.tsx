@@ -5,6 +5,7 @@ import {
   LEGAL_DOCUMENT_LIST,
   legalDocumentBySlug,
 } from "@/lib/couranr/legal/registry";
+import { createIndexablePublicMetadata } from "@/lib/couranr/public/seo";
 
 /**
  * One route, five documents.
@@ -26,8 +27,12 @@ export function generateStaticParams() {
 export async function generateMetadata(props: { params: Promise<{ document: string }> }) {
   const params = await props.params;
   const doc = legalDocumentBySlug(params.document);
-  if (!doc) return { title: "Couranr legal documents" };
-  return { title: `${doc.title} — Couranr`, description: doc.summary };
+  if (!doc) return { title: "Couranr legal documents", robots: { index: false, follow: false } };
+  return createIndexablePublicMetadata({
+    title: `${doc.title} — Couranr`,
+    description: doc.summary,
+    path: `/legal/${doc.slug}`,
+  });
 }
 
 export default async function LegalDocumentPage(props: {

@@ -1,6 +1,11 @@
 // app/layout.tsx
 import type { Metadata } from "next";
 import { CouranrAnalytics } from "@/components/analytics/CouranrAnalytics";
+import { MASTER_COPY } from "@/lib/couranr/public/masterSameDayCopy";
+import {
+  CANONICAL_SITE_URL,
+  SEARCH_ENGINE_VERIFICATION,
+} from "@/lib/couranr/public/seo";
 import "./globals.css";
 
 /**
@@ -9,8 +14,11 @@ import "./globals.css";
  * mockup crop. Sources: Couranr_Canonical_Logo_System_v1.zip.
  */
 export const metadata: Metadata = {
-  title: "Couranr",
-  description: "Couranr OS — Delivery, Auto Rentals, and Docs",
+  metadataBase: new URL(CANONICAL_SITE_URL),
+  title: "Couranr — local delivery, built around you",
+  description: MASTER_COPY.hero_support,
+  applicationName: "Couranr",
+  verification: SEARCH_ENGINE_VERIFICATION,
   icons: {
     icon: [
       { url: "/brand/couranr-app-icon.svg", type: "image/svg+xml" },

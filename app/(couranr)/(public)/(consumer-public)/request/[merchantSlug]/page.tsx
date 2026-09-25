@@ -1,17 +1,17 @@
-import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { HostedRequestFlow } from "@/components/couranr/hosted/HostedRequestFlow";
 import {
   isHostedFailure,
   resolveHostedMerchant,
 } from "@/lib/couranr/hosted/commands";
+import { createNoIndexPublicMetadata } from "@/lib/couranr/public/seo";
 
 export const dynamic = "force-dynamic";
 
-export const metadata: Metadata = {
+export const metadata = createNoIndexPublicMetadata({
   title: "Request delivery — Couranr",
   description: "Request local delivery from a business that uses Couranr.",
-};
+});
 
 export default async function Page(
   props: { params: Promise<{ merchantSlug: string }> }

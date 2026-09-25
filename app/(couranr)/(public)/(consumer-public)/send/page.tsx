@@ -1,8 +1,8 @@
 import { Suspense } from "react";
-import type { Metadata } from "next";
 import { SendFlow } from "@/components/couranr/sameday/SendFlow";
 import { resolveAdapterMode } from "@/lib/couranr/sameday/adapterMode";
 import { isRecipientIdentityCapabilityAvailable } from "@/lib/couranr/identity/recipientIdentity";
+import { createNoIndexPublicMetadata } from "@/lib/couranr/public/seo";
 
 /**
  * PUB-004's direct-consumer mode, at `/send`.
@@ -21,10 +21,10 @@ import { isRecipientIdentityCapabilityAvailable } from "@/lib/couranr/identity/r
  * input can turn them on.
  */
 
-export const metadata: Metadata = {
+export const metadata = createNoIndexPublicMetadata({
   title: "Send something — Couranr Same Day",
   description: "Send something you have, or have Couranr pick something up for you.",
-};
+});
 
 export default function Page() {
   /* Resolved here, on the server, from environment only. The page hands the

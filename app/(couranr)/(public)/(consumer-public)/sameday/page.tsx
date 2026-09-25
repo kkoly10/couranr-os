@@ -1,4 +1,3 @@
-import type { Metadata } from "next";
 import { isRecipientIdentityCapabilityAvailable } from "@/lib/couranr/identity/recipientIdentity";
 import Link from "next/link";
 import { SAME_DAY_COPY } from "@/lib/couranr/public/masterSameDayCopy";
@@ -11,6 +10,7 @@ import {
 } from "@/lib/couranr/consumer/protection";
 import { LEGAL_DOCUMENTS, legalDocumentHref } from "@/lib/couranr/legal/registry";
 import { routeForScreen } from "@/lib/couranr/navigation";
+import { createIndexablePublicMetadata } from "@/lib/couranr/public/seo";
 
 /**
  * PUB-013 — Couranr Same Day, at `/sameday`.
@@ -59,10 +59,13 @@ import { routeForScreen } from "@/lib/couranr/navigation";
  * describe to a person on this page.
  */
 
-export const metadata: Metadata = {
+export const metadata = createIndexablePublicMetadata({
   title: "Couranr Same Day — local delivery, today",
   description: SAME_DAY_COPY.hero_support,
-};
+  path: "/sameday",
+  image: "/images/marketing/2026-08/w/mkt-2026-08-consumer-doorstep-handoff-wide-1200.webp",
+  imageAlt: "A person receives a small parcel and shopping bag at the front door of a home.",
+});
 
 const IMG = "/images/marketing/2026-08/w";
 

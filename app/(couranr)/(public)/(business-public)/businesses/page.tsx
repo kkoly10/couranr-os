@@ -1,5 +1,4 @@
 import Link from "next/link";
-import type { Metadata } from "next";
 import { Text } from "@/components/couranr/primitives";
 import {
   IconChat,
@@ -24,6 +23,7 @@ import {
   largestSrc,
   srcSetFor,
 } from "@/lib/couranr/public/marketingPhotos";
+import { createIndexablePublicMetadata } from "@/lib/couranr/public/seo";
 
 /**
  * PUB-009 — supported business categories and merchant-controlled channels.
@@ -46,11 +46,14 @@ import {
  * list of the same seven chips.
  */
 
-export const metadata: Metadata = {
+export const metadata = createIndexablePublicMetadata({
   title: "For businesses — Couranr",
   description:
     "Local delivery for boutiques, florists, bakeries, printers, repair shops and more — through the ordering channels you already control.",
-};
+  path: "/businesses",
+  image: "/images/marketing/2026-08/w/mkt-2026-08-gift-stationery-wide-1200.webp",
+  imageAlt: "Stationery-shop worker helping an older customer choose an item.",
+});
 
 const CHANNELS = [
   { label: "Website", Icon: IconGlobe },

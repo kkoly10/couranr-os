@@ -1,5 +1,4 @@
 import Link from "next/link";
-import type { Metadata } from "next";
 import { Badge, Text } from "@/components/couranr/primitives";
 import {
   IconBox,
@@ -11,6 +10,7 @@ import {
   IconTruck,
 } from "@/components/couranr/marketing/MarketingIcons";
 import { SUPPORT_COPY } from "@/lib/couranr/public/governed";
+import { createIndexablePublicMetadata } from "@/lib/couranr/public/seo";
 import {
   CONFIRMATION_PHOTO,
   intrinsic,
@@ -40,11 +40,14 @@ import {
  * appears there.
  */
 
-export const metadata: Metadata = {
+export const metadata = createIndexablePublicMetadata({
   title: "How Couranr works — Couranr",
   description:
     "Request, payment authorization, Couranr confirmation, managed pickup and delivery with live tracking and proof — for merchant-paid and customer-paid deliveries.",
-};
+  path: "/how-it-works",
+  image: "/images/marketing/2026-08/w/mkt-2026-08-customer-at-home-wide-1900.webp",
+  imageAlt: "A person setting a shopping bag and a potted plant on a table just inside her front door.",
+});
 
 /**
  * CAP-001's `order`, verbatim in sequence and grouped for reading. The

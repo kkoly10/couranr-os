@@ -1,5 +1,4 @@
 import Link from "next/link";
-import type { Metadata } from "next";
 import { Table, TableScroll, Text } from "@/components/couranr/primitives";
 import {
   BASE_PRICE_CENTS,
@@ -27,6 +26,7 @@ import {
   LoadedMilesDiagram,
 } from "@/components/couranr/marketing/PricingDiagrams";
 import { PricingDetails } from "./PricingDetails";
+import { createIndexablePublicMetadata } from "@/lib/couranr/public/seo";
 
 /**
  * PUB-008 — the pricing page. Every number renders from
@@ -54,10 +54,11 @@ import { PricingDetails } from "./PricingDetails";
  * internal driver-cost benchmarks (PRC-002).
  */
 
-export const metadata: Metadata = {
+export const metadata = createIndexablePublicMetadata({
   title: "Pricing — Couranr",
   description: `Delivery starts at ${dollars(BASE_PRICE_CENTS)} for the first ${INCLUDED_LOADED_MILES} loaded miles, with published mileage tiers and approved operating charges. No monthly fee during the pilot.`,
-};
+  path: "/pricing",
+});
 
 /** SUR-001 service levels and OVN-001, as one ordered ladder. */
 const SERVICE_LEVELS = [
