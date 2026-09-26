@@ -3832,7 +3832,87 @@
         "Future route work groups Delivery identities rather than storing a stop count on one Delivery."
       ],
       "decided_by": "owner",
-      "decided_at_utc": "2026-08-31T00:00:00Z"
+      "decided_at_utc": "2026-08-31T00:00:00Z",
+      "amended_by": [
+        "RR-001"
+      ]
+    },
+    {
+      "id": "RR-001",
+      "category": "business route run v1",
+      "decision": "Business multi-stop V1 uses a Route Run aggregate over separate one-destination deliveries. The first release is one common Business pickup, two to five merchant-paid stops, explicit merchant-chosen draft order frozen by accepted versions, no consumer multi-stop, no multiple pickups, and no automatic route discount. The launch aggregate declared-value ceiling is $500 across the whole Route Run in addition to each child's own item limit.",
+      "amends": "FND-005",
+      "value": {
+        "product_name": "Route Run",
+        "business_only": true,
+        "common_pickup_count": 1,
+        "minimum_stops": 2,
+        "maximum_stops": 5,
+        "child_model": "separate canonical one-destination Delivery/request per stop",
+        "payer": "merchant",
+        "draft_order_owner": "merchant",
+        "accepted_order_mutability": "immutable; reordering requires a reviewed successor route version",
+        "customer_price_v1": "exact sum of the accepted canonical child delivery quotes",
+        "automatic_route_discount": false,
+        "historical_route_saver_1699_per_stop_price_reused": false,
+        "aggregate_declared_value_limit_cents": 50000,
+        "individual_child_value_policy": "existing per-delivery policy remains independently enforced",
+        "payment_architecture": "separate child payment obligations; Route Run may orchestrate them but never collapses accounting into one ambiguous delivery charge",
+        "dispatch_architecture": "one Route Run resource owner for one driver and compatible vehicle; children must be excluded from standalone dispatch once accepted",
+        "draft_foundation_booking_available": false,
+        "out_of_scope_v1": [
+          "consumer multi-stop",
+          "multiple pickups",
+          "mixed payers",
+          "automatic route optimization",
+          "automatic route discounts",
+          "group tipping",
+          "website-tools route creation"
+        ]
+      },
+      "status": "decided",
+      "owner_approved": true,
+      "owner_approved_on": "2026-09-26",
+      "authority_file": "02_DECISION_REGISTRY.json",
+      "authority_section": "RR-001.value — owner-approved Route Run continuation after 2026-09-26 recon",
+      "affected_routes": [
+        "/app/business/deliveries/new",
+        "/app/business/routes",
+        "/app/business/routes/new",
+        "/app/business/routes/[id]",
+        "/operations/deliveries/[id]"
+      ],
+      "affected_screen_ids": [],
+      "affected_database_objects": [
+        "couranr_route_runs",
+        "couranr_route_run_versions",
+        "couranr_route_run_stops",
+        "couranr_route_run_events"
+      ],
+      "affected_code_paths": [
+        "lib/couranr/routeRuns/**",
+        "app/api/couranr/merchant/route-runs/**",
+        "supabase/migrations/20260923200000_couranr_route_run_draft_foundation.sql",
+        "docs/couranr-mvp/ROUTE_RUN_IMPLEMENTATION.md"
+      ],
+      "conflict_with_current_code": {
+        "code_value": "Canonical requests reject additionalStops > 0 and no Route Run schema exists on current main/production.",
+        "code_location": "lib/couranr/requests/input.ts; public.couranr_delivery_requests.additional_stops; production schema",
+        "resolution": "Keep additional_stops fenced at zero. Introduce the separately reviewed draft-only Route Run aggregate. Booking/execution remains unavailable until later route-acceptance, settlement, dispatch and custody slices ship.",
+        "remediation_commit": "Route Run readiness V1"
+      },
+      "implementation_phase": "post-Foundation Gate A",
+      "acceptance_criteria": [
+        "A Route Run draft groups two to five distinct Business-owned merchant-paid child requests with one common pickup and preserves explicit stop order.",
+        "Every child remains a single-destination canonical request with additional_stops = 0 and its own immutable quote identity.",
+        "Draft infrastructure cannot capture payment, create a canonical delivery, reserve/assign a driver or vehicle, issue custody credentials, or activate stops.",
+        "The reference total is the exact sum of child quote subtotals and is explicitly not a route offer or payable amount.",
+        "No public or merchant surface advertises the retired $16.99/stop Route Saver price.",
+        "The Route Run V1 aggregate declared value ceiling is 50000 cents and unknown aggregate cargo/value evidence fails closed.",
+        "A future accepted Route Run must atomically claim all children against standalone submission and dispatch before execution can become available."
+      ],
+      "decided_by": "owner",
+      "decided_at_utc": "2026-09-26T05:25:00Z"
     },
     {
       "id": "FND-006",

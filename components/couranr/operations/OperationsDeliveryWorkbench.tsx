@@ -22,6 +22,7 @@ import { OperationsPilotCreditPanel } from "@/components/couranr/fulfillment/Ope
 import { OperationsAssignmentPanel } from "@/components/couranr/dispatch/OperationsAssignmentPanel";
 import { OperationsExecutionPanel } from "@/components/couranr/dispatch/OperationsExecutionPanel";
 import { CustodyBundlePanel } from "@/components/couranr/operations/CustodyBundlePanel";
+import { OperationsRefundReviewEntry } from "@/components/couranr/operations/refunds/OperationsRefundReviewEntry";
 import type { FulfillmentView } from "@/components/couranr/fulfillment/client";
 import {
   LIFECYCLE_STAGE_LABELS,
@@ -359,11 +360,18 @@ function CurrentAction({
   }
 
   return fulfillment?.delivery ? (
-    <OperationsExecutionPanel
-      deliveryId={fulfillment.delivery.id}
-      fulfillmentState={fulfillment.delivery.fulfillmentState}
-      onChanged={onLifecycleChanged}
-    />
+    <Stack gap={4}>
+      <OperationsExecutionPanel
+        deliveryId={fulfillment.delivery.id}
+        fulfillmentState={fulfillment.delivery.fulfillmentState}
+        onChanged={onLifecycleChanged}
+      />
+      <OperationsRefundReviewEntry
+        requestId={request.id}
+        fulfillmentState={fulfillment.delivery.fulfillmentState}
+        paymentState={fulfillment.payment?.paymentState ?? null}
+      />
+    </Stack>
   ) : (
     <Alert tone="info" title="No further Operations action">
       This request is closed, declined or cancelled.

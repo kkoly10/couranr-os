@@ -262,6 +262,9 @@ describe("server-only modules are unreachable from client code", () => {
       "lib/couranr/providers/paidApiGuard.ts",
       "lib/couranr/requests/actor.ts",
       "lib/couranr/requests/commands.ts",
+      // Business Route Run drafts use service-role RPCs and must stay behind
+      // the authenticated Business API boundary.
+      "lib/couranr/routeRuns/commands.ts",
       // Provider-neutral composition: Google verifies address identity,
       // Mapbox owns route/distance/traffic. Neither authority reaches clients.
       "lib/couranr/routing/canonicalRoute.ts",
@@ -416,6 +419,7 @@ describe("canonical server routes do not import the browser client", () => {
       "app/api/couranr/merchant/deliveries/[id]/return-code/route.ts",
       "app/api/couranr/merchant/places/route.ts",
       "app/api/couranr/merchant/presets/route.ts",
+      "app/api/couranr/merchant/route-runs/route.ts",
       "app/api/couranr/merchant/website-tools/route.ts",
       "app/api/couranr/operations/activation/route.ts",
       "app/api/couranr/operations/analytics/route.ts",

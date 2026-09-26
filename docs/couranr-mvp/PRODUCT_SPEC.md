@@ -208,6 +208,31 @@ The historical additional-stop and Route Saver prices below remain future
 product/pricing authority; they do not permit extra destinations on one
 canonical Delivery in Gate A.
 
+## Route Run V1 amendments — 2026-09-26
+
+RR-001 moves the previously deferred Business multi-stop architecture into an
+explicit, still-gated Route Run program. It does **not** reactivate the old
+additional-stop field or the retired $16.99-per-stop Route Saver price.
+
+- One Route Run groups **two to five** separate canonical, one-destination
+  Business deliveries from **one common pickup**.
+- V1 is **merchant-paid only**. Consumer multi-stop, mixed payers and multiple
+  pickups remain out of scope.
+- The merchant may arrange draft stop order. Once a Route version is accepted,
+  that order is immutable; a reorder is a reviewed successor version rather
+  than an in-place edit.
+- V1 customer price is the exact sum of the accepted child delivery quotes.
+  There is no automatic route discount in the first release.
+- Every child keeps its own immutable quote, payment obligation, recipient
+  tracking/proof, dispute/refund identity and one-destination custody chain.
+- The launch aggregate declared-value ceiling is **$500 across the whole Route
+  Run**, in addition to each child's own item/value limits. Unknown aggregate
+  cargo or value evidence fails closed.
+- The first Route Run migration is draft-only. Draft membership does not claim
+  a child and grants no payment, dispatch, resource-reservation, custody or stop
+  execution authority. Booking stays unavailable until those later authorities
+  are built and tested.
+
 ## Provenance — this is an EXTRACTION, not a rewrite
 
 Every line below is lifted verbatim from `Couranr_Claude_Code_Master_Package.md`

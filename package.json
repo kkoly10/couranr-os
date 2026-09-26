@@ -56,6 +56,8 @@
     "typecheck:couranr-foundation": "tsc -p tsconfig.couranr-foundation.json",
     "test:payment-recovery": "node e2e/disposable/paymentRecovery.mjs",
     "test:refund-review": "node e2e/disposable/refundReview.mjs",
+    "test:route-run-foundation": "node e2e/disposable/routeRunFoundation.mjs",
+    "test:problem-audience": "node e2e/disposable/customerProblemAudience.mjs",
     "test:credit-settlement": "node e2e/disposable/creditSettlement.mjs",
     "test:rollback-guards": "node e2e/disposable/rollbackGuards.mjs",
     "test:consumer-send": "node e2e/disposable/consumerSend.mjs",

@@ -53,6 +53,29 @@ export function loadRefundRequests(): Promise<ApiResult<{ refundRequests: Refund
 }
 
 /**
+ * Opens an Operations review only. No amount travels on this request and no
+ * refund is issued by this action; OPS-011 still owns the later decision.
+ */
+export function openRefundReview(input: {
+  deliveryRequestId: string;
+  detail: string;
+  incidentId?: string | null;
+  problemReportId?: string | null;
+}): Promise<ApiResult<{ refundRequest: RefundRequestRow }>> {
+  return call<{ refundRequest: RefundRequestRow }>("/api/couranr/operations/refunds", {
+    method: "POST",
+    body: {
+      deliveryRequestId: input.deliveryRequestId,
+      requestedBy: "operations",
+      reasonCode: "operations_adjustment",
+      detail: input.detail,
+      incidentId: input.incidentId ?? null,
+      problemReportId: input.problemReportId ?? null,
+    },
+  });
+}
+
+/**
  * Approve, in full or in part.
  *
  * `approvedCents` is a REQUEST. The server recomputes the refundable ceiling
