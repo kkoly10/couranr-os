@@ -4443,6 +4443,14 @@
 }
 
 @media (max-width: 640px) {
+  /* The display face has taller real glyph bounds than its nominal 0.99
+     leading allows once the master headline wraps to three lines. Keep the
+     desktop compression, but give the mobile hero enough leading that adjacent
+     lines never touch on Safari/iPhone widths. */
+  .cr-master-sales-hero__lead .cr-type-statement {
+    line-height: 1.08;
+  }
+
   .cr-master-sales-hero__img,
   .cr-master-business__img { aspect-ratio: 4 / 5; }
 
