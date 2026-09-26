@@ -360,8 +360,13 @@
       "composition_regions": [
         "navigation",
         "master-hero",
-        "master-network",
-        "master-service-area"
+        "master-use-cases",
+        "master-workflow",
+        "master-business",
+        "master-service-check",
+        "master-handoff",
+        "master-faq",
+        "master-closing"
       ],
       "mobile_reference": null,
       "gate_a_review": "docs/couranr-mvp/brand/PUB-FAMILY_V3_REVIEW.md",

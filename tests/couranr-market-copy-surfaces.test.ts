@@ -209,21 +209,22 @@ describe("cross-surface claim boundaries are single-sourced", () => {
     }
   });
 
-  it("the locked product distinction is ONE string, rendered on both surfaces", () => {
-    /* "Same Day solves a delivery. Couranr for Business helps your business
-       offer delivery." is the owner-locked positioning. The master homepage and
-       the business overview both make the argument; if the sentence existed
-       twice, the two pages could end up describing one product differently. */
-    for (const f of [MASTER_SURFACE, BUSINESS_OVERVIEW]) {
-      expect(read(f), `${f} does not render the locked distinction`).toContain(
-        "MASTER_COPY.network_statement",
-      );
-    }
-    const words = "Same Day solves a delivery";
-    for (const f of [MASTER_SURFACE, BUSINESS_OVERVIEW]) {
-      expect(read(f), `${f} retypes the locked distinction`).not.toContain(words);
-    }
-    expect(read("lib/couranr/public/masterSameDayCopy.ts")).toContain(words);
+  it("the master and business product boundaries both render from locked copy", () => {
+    /* MKT-007 deliberately gives the master a concrete responsibility boundary
+       while PUB-001 keeps the purpose-based product distinction. They are
+       different sentences for different jobs, but both still have exactly one
+       authority: MASTER_COPY. */
+    expect(read(MASTER_SURFACE), "master does not render its locked responsibility boundary").toContain(
+      "MASTER_COPY.hero_boundary",
+    );
+    expect(read(BUSINESS_OVERVIEW), "business does not render the locked product distinction").toContain(
+      "MASTER_COPY.network_statement",
+    );
+    expect(read(MASTER_SURFACE)).not.toContain("You arrange the item. Couranr handles the trip.");
+    expect(read(BUSINESS_OVERVIEW)).not.toContain("Same Day solves a delivery");
+    const copy = read("lib/couranr/public/masterSameDayCopy.ts");
+    expect(copy).toContain("You arrange the item. Couranr handles the trip.");
+    expect(copy).toContain("Same Day solves a delivery");
   });
 
   /**

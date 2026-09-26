@@ -43,12 +43,15 @@ import { createRequire } from "node:module";
  * against the requirement.
  */
 const WO = {
-  /* The 2026-09 marketing-architecture lock rewrote both door titles: the
-     doors now carry the PRODUCT NAMES, because the master homepage's job is to
-     tell a visitor which of the two products is theirs. Transcribed, as the
-     header says, so a bad edit to the copy module cannot move the goalposts. */
-  master_consumer_door: "Couranr Same Day",
-  master_business_door: "Couranr for Business",
+  /* MKT-007 makes the master page action-led: the two primary Same Day
+     actions preserve intent into /send, while Business stays separately
+     discoverable. These are transcribed from the owner-approved decision so a
+     bad copy-module edit cannot move the goalposts. */
+  master_pickup: "Pick something up",
+  master_send: "Send something",
+  master_business: "Couranr for Business",
+  master_marketplace: "Bought something on Facebook Marketplace?",
+  master_boundary: "You arrange the item. Couranr handles the trip.",
   tracking_stages: ["Confirmed", "Picked up", "Delivered"],
   chrome: {
     same_day: "Same Day",
@@ -73,7 +76,16 @@ const { chromium } = require(
 /** Gate F and G both name exactly these five. */
 const WIDTHS = [1440, 1024, 768, 390, 320];
 
-const MASTER_SECTIONS = ["master-hero", "master-network", "master-service-area"];
+const MASTER_SECTIONS = [
+  "master-hero",
+  "master-use-cases",
+  "master-workflow",
+  "master-business",
+  "master-service-check",
+  "master-handoff",
+  "master-faq",
+  "master-closing",
+];
 const SAMEDAY_SECTIONS = [
   "sameday-hero",
   "sameday-business-crosslink",
@@ -200,7 +212,7 @@ async function structureGate(browser, route, expected, tag, affordanceSelector) 
     const tops = await page.$$eval(affordanceSelector, (els) =>
       els.map((e) => e.getBoundingClientRect().top + window.scrollY),
     );
-    check(`${tag}@${width} exactly two audience affordances`, tops.length === 2, `${tops.length} found`);
+    check(`${tag}@${width} exactly two primary affordances`, tops.length === 2, `${tops.length} found`);
     if (tops.length === 2) {
       const deepest = Math.max(...tops);
       check(
@@ -374,23 +386,36 @@ async function masterContentGate(browser) {
   const page = await ctx.newPage();
   await page.goto(`${BASE}/`, { waitUntil: "networkidle" });
 
-  const doors = await page.$$eval("[data-couranr-door]", (els) =>
+  const actions = await page.$$eval("[data-couranr-primary-action]", (els) =>
     els.map((e) => ({
-      audience: e.getAttribute("data-couranr-door"),
+      intent: e.getAttribute("data-couranr-primary-action"),
       href: e.getAttribute("href"),
-      title: e.querySelector(".cr-master-door__title")?.textContent?.trim(),
+      text: (e.textContent || "").trim(),
     })),
   );
-  check("master both doors resolve to the canonical audience route",
-    doors.length === 2 &&
-      doors.find((d) => d.audience === "consumer")?.href === "/sameday" &&
-      doors.find((d) => d.audience === "business")?.href === "/business",
-    doors.map((d) => `${d.audience}→${d.href}`).join(", "));
   check(
-    "master door titles are the locked MKT-005 strings",
-    doors.find((d) => d.audience === "consumer")?.title === WO.master_consumer_door &&
-      doors.find((d) => d.audience === "business")?.title === WO.master_business_door,
-    doors.map((d) => d.title).join(" / "),
+    "master primary actions preserve pickup/send intent",
+    actions.length === 2 &&
+      actions.find((a) => a.intent === "pickup")?.href === "/send?intent=pickup" &&
+      actions.find((a) => a.intent === "send")?.href === "/send?intent=send",
+    actions.map((a) => `${a.intent}→${a.href}`).join(", "),
+  );
+  check(
+    "master primary actions use the locked MKT-005 labels",
+    actions.find((a) => a.intent === "pickup")?.text === WO.master_pickup &&
+      actions.find((a) => a.intent === "send")?.text === WO.master_send,
+    actions.map((a) => a.text).join(" / "),
+  );
+
+  const businessCtas = await page.$$eval("[data-couranr-business-cta]", (els) =>
+    els.map((e) => ({ href: e.getAttribute("href"), text: (e.textContent || "").trim() })),
+  );
+  check(
+    "master keeps Couranr for Business prominent",
+    businessCtas.length >= 3 &&
+      businessCtas.every((a) => a.href === "/business") &&
+      businessCtas.some((a) => a.text.includes(WO.master_business)),
+    businessCtas.map((a) => `${a.text}→${a.href}`).join(" | "),
   );
 
   /* "business-only notice or footer leakage" and "universal businesses-only
@@ -405,13 +430,31 @@ async function masterContentGate(browser) {
     body.match(/Local business delivery across[^.]*\./)?.[0] ?? "clean",
   );
 
-  /* Gate F's prohibited additions, as rendered rather than as source. */
+  check(
+    "master teaches the Marketplace use case and responsibility boundary",
+    body.includes(WO.master_marketplace) && body.includes(WO.master_boundary),
+    `marketplace=${body.includes(WO.master_marketplace)} boundary=${body.includes(WO.master_boundary)}`,
+  );
+  check(
+    "master does not imply a marketplace partnership or merchandise transaction",
+    !/official partner|partnered with facebook|facebook partner|pay the seller|we pay the seller|buyer protection/i.test(body),
+    "no unsupported partnership/payment/protection claim",
+  );
+
+  /* MKT-007 explicitly ADDS a compact FAQ but still forbids fabricated social
+     proof and vanity-metric bands. Assert both sides so the new latitude cannot
+     be mistaken for removing the old truthfulness guardrail. */
   const headings = await page.$$eval("h2, h3", (els) =>
     els.map((e) => (e.textContent || "").trim().toLowerCase()),
   );
   check(
-    "master adds no FAQ, testimonial or metrics band",
-    !headings.some((h) => /faq|frequently asked|testimonial|what our|trusted by|by the numbers/.test(h)),
+    "master renders the first-customer FAQ",
+    headings.some((h) => h.includes("things to know before you book")),
+    headings.join(" | "),
+  );
+  check(
+    "master adds no testimonial or metrics band",
+    !headings.some((h) => /testimonial|what our|trusted by|by the numbers/.test(h)),
     headings.join(" | "),
   );
 
@@ -499,7 +542,7 @@ async function main() {
   await startServer();
   const browser = await chromium.launch({ executablePath: process.env.COURANR_BROWSER_EXECUTABLE || undefined });
   try {
-    await structureGate(browser, "/", MASTER_SECTIONS, "master", "[data-couranr-door]");
+    await structureGate(browser, "/", MASTER_SECTIONS, "master", "[data-couranr-primary-action]");
     await structureGate(browser, "/sameday", SAMEDAY_SECTIONS, "sameday", ".cr-sd-intent");
     await masterContentGate(browser);
     await sameDayContentGate(browser);

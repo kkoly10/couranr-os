@@ -2991,7 +2991,7 @@
             ]
           }
         ],
-        "master_surface": "PUB-012 at / routes a visitor to one of the two paths and carries no merchant-positioning claim of its own",
+        "master_surface": "PUB-012 at / is the sales-led master homepage: it leads with recognizable Same Day use cases, routes directly into pickup or send, and summarizes Couranr for Business with locked master copy. Substantive merchant-positioning claims remain governed by MKT-002 and live on PUB-001.",
         "mkt_002_scope_after_this": "PUB-001, Couranr for Business, /business, all merchant-positioning claims, and the prohibition on claiming Couranr generates merchant customers, leads or product sales",
         "consumer_guardrail": {
           "is_not": [
@@ -3042,7 +3042,10 @@
         "Every merchant-positioning claim stays on PUB-001 and stays governed by MKT-002."
       ],
       "decided_by": "owner",
-      "decided_at_utc": "2026-08-29T00:00:00Z"
+      "decided_at_utc": "2026-08-29T00:00:00Z",
+      "amended_by": [
+        "MKT-007"
+      ]
     },
     {
       "id": "LEG-004",
@@ -3200,8 +3203,8 @@
       "decision": "The fixed editorial copy, intent labels and non-transactional consumer reassurance for PUB-012, PUB-013 and PUB-004's direct-consumer mode are locked public copy. They implement MKT-004's two-path brand. Decision-dependent values — markets, prices, mileage, operating hours, cutoffs, payer rules and availability — remain governed by their existing records and must never be retyped into these surfaces.",
       "value": {
         "master": {
-          "hero_headline": "Local delivery, built around you.",
-          "hero_support": "Need one local delivery? Use Couranr Same Day. Run a business that wants to offer delivery to customers? Couranr for Business gives you the delivery operation behind it.",
+          "hero_headline": "Already bought it? We’ll go get it.",
+          "hero_support": "Couranr picks up eligible purchases you’ve already arranged—and delivers things you already have.",
           "consumer_door_title": "Couranr Same Day",
           "consumer_door_support": "Send something you have or pick up something you’ve already bought.",
           "business_door_title": "Couranr for Business",
@@ -3227,7 +3230,70 @@
           ],
           "network_edge_case": "A business owner can still use Same Day for an occasional personal or one-off trip. What determines the product is the purpose of the delivery—not whether you happen to own a business.",
           "network_example": "Bought a cake and need it picked up? Same Day. Run the bakery and want Couranr delivering customer cake orders? For Business.",
-          "service_area_heading": "Where Couranr delivers"
+          "service_area_heading": "Where Couranr delivers",
+          "hero_boundary": "You arrange the item. Couranr handles the trip.",
+          "hero_pickup_cta": "Pick something up",
+          "hero_send_cta": "Send something",
+          "hero_business_prompt": "Delivering orders for your customers?",
+          "hero_business_cta": "Couranr for Business",
+          "use_cases_heading": "Here’s when Couranr comes in.",
+          "marketplace_title": "Bought something on Facebook Marketplace?",
+          "marketplace_body": "Arrange the purchase with the seller and confirm they can hand it to a courier. Couranr can collect an eligible item and bring it to you.",
+          "marketplace_boundary": "Couranr handles delivery—not seller payments, negotiation or product authentication.",
+          "route_story_brand": "Couranr",
+          "ready_title": "Your order is ready. Your schedule isn’t.",
+          "ready_body": "Dry cleaning, a print order or an eligible purchase from a local shop. Confirm it is ready and that the pickup location permits courier collection. Couranr handles the trip.",
+          "send_title": "Something needs to get across town.",
+          "send_body": "Keys at home. Documents at work. A gift for a friend. Send an eligible item from where it is to the person who needs it.",
+          "workflow_heading": "Arrange the pickup. We’ll handle the delivery.",
+          "workflow_titles": [
+            "Get the item ready",
+            "Tell us about the trip",
+            "Review your delivery",
+            "Couranr handles the trip"
+          ],
+          "workflow_bodies": [
+            "Arrange the item with the seller, store or person holding it, and confirm courier collection.",
+            "Enter the pickup and destination, describe the item, and provide the required contact information.",
+            "See the delivery estimate before you submit. Couranr confirms availability, schedule and vehicle before capture.",
+            "The driver completes the required pickup process, and the recipient gets their own delivery information for handoff."
+          ],
+          "workflow_example": "Example: arrange a box of books with a local seller, confirm courier pickup, enter the seller’s address and your destination, review the delivery estimate, and Couranr handles the trip.",
+          "business_heading": "Your customers order from you. We handle delivery.",
+          "business_body": "Keep taking orders through your existing website, messages, phone or counter. Couranr for Business helps you organize delivery after the order is ready.",
+          "business_points": [
+            "Manage customer deliveries in one workspace",
+            "Choose whether the business or customer pays",
+            "Follow fulfillment, tracking and proof",
+            "Keep delivery history together"
+          ],
+          "business_cta": "Explore Couranr for Business",
+          "check_heading": "See whether we can make the trip—and what it will cost.",
+          "check_body": "Enter the pickup and destination and describe the item. Couranr checks the trip and shows the delivery estimate before you submit.",
+          "check_payment": "Couranr confirms availability, schedule and vehicle before any payment is captured.",
+          "check_cta": "Check my delivery",
+          "handoff_heading": "Know how your item changes hands.",
+          "handoff_pickup": "Couranr provides pickup verification for the person handing over the item. Keep it with that person and do not send it to the driver in advance.",
+          "handoff_recipient": "When the delivery is confirmed, Couranr emails the recipient their own private tracking and handoff instructions.",
+          "handoff_evidence": "Some shipments require additional pickup documentation based on the declared value.",
+          "handoff_honesty": "Couranr documents what is presented and handed over. Couranr does not authenticate, appraise or certify merchandise.",
+          "faq_heading": "A few things to know before you book.",
+          "faq_questions": [
+            "Can Couranr collect a Facebook Marketplace purchase?",
+            "Does Couranr buy or pay for the item?",
+            "Does the seller or store need a Couranr Business account?",
+            "Can Couranr carry anything?",
+            "Does the recipient need to be there?"
+          ],
+          "faq_answers": [
+            "Couranr can collect an eligible item when the purchase is already arranged and the seller agrees to courier pickup. Couranr is the delivery service, not the seller or marketplace.",
+            "No. Merchandise payments and agreements stay between you and the seller or store.",
+            "No for a Same Day pickup. The pickup party still needs to agree to collection and complete the required handoff.",
+            "No. Couranr checks shipment details and does not carry prohibited or restricted items. Some size, weight, value or handling needs may require review or may not be available.",
+            "Same Day requires an adult recipient and a recipient handoff step. The request flow tells you what is required for the shipment."
+          ],
+          "closing_headline": "One less trip to make.",
+          "closing_support": "Pick up something you arranged, send something you have, or put Couranr to work for your business."
         },
         "same_day": {
           "hero_headline": "Need it across town today?",
@@ -3300,13 +3366,13 @@
         "send": {
           "trip_send_origin": "Where is the item now?",
           "trip_pickup_origin": "Where should we pick it up?",
-          "trip_pickup_hint": "Search for the business or enter its address.",
+          "trip_pickup_hint": "Enter the address where the item will be collected.",
           "trip_destination": "Where is it going?",
           "item_question": "What are we delivering?",
-          "item_example": "A birthday cake I already paid for at Main Street Bakery.",
+          "item_example": "A box of books I already bought from a local seller.",
           "item_ai_disclosure": "Couranr uses AI to read this description and suggest your shipment details. You confirm everything before you pay, and Couranr — not the AI — sets the price and what can be carried.",
           "readiness_question": "Is it ready for pickup?",
-          "readiness_yes": "Yes, the business says it’s ready",
+          "readiness_yes": "Yes, they say it’s ready for pickup",
           "readiness_no": "Not yet / I’m not sure",
           "timing_question": "When do you need it?",
           "timing_asap": "As soon as possible",
@@ -3384,10 +3450,16 @@
         "Every locked string rendered by PUB-012, PUB-013, PUB-001 or /send comes from the typed copy module, and the module matches this record byte for byte.",
         "No market name, price, mileage, operating hour, cutoff or service-level amount is typed into those surfaces; each is imported from the governed public module.",
         "No route or URL is read from the copy module.",
-        "PUB-001 renders the two locked positioning strings (network_heading, network_statement) through MASTER_COPY and never retypes them; the master homepage and the business overview cannot describe the products differently."
+        "PUB-001 renders network_heading and network_statement through MASTER_COPY; PUB-012 renders its MKT-007 responsibility boundary through MASTER_COPY. Neither public surface retypes its governed product-positioning sentence.",
+        "PUB-012 leads with concrete Same Day use cases before product taxonomy and routes pickup/send CTAs directly to /send intent variants.",
+        "PUB-012 may name Facebook Marketplace only as an example of where a purchase was arranged; it never implies integration, seller payment, buyer protection or merchandise authentication.",
+        "PUB-012 keeps Couranr for Business visible in the first screen and in a dedicated business section without claiming Couranr generates merchant demand."
       ],
       "decided_by": "owner",
-      "decided_at_utc": "2026-08-30T00:00:00Z"
+      "decided_at_utc": "2026-08-30T00:00:00Z",
+      "amended_by": [
+        "MKT-007"
+      ]
     },
     {
       "id": "MKT-006",
@@ -3447,6 +3519,86 @@
       ],
       "decided_by": "owner",
       "decided_at_utc": "2026-08-30T00:00:00Z"
+    },
+    {
+      "id": "MKT-007",
+      "category": "master homepage marketing architecture",
+      "decision": "PUB-012 is a sales-led master homepage, not a three-region product router. It must teach first-time visitors through recognizable Same Day situations before asking them to understand Couranr’s product taxonomy. The homepage leads with arranged-purchase pickup and personal-item delivery, names Facebook Marketplace as one illustrative source without implying an integration, keeps Couranr for Business prominent, explains the request/handoff boundary, and routes directly into the existing /send intent variants. MKT-004’s two-path brand and MKT-002’s merchant-claim limits remain in force.",
+      "amends": "MKT-005",
+      "value": {
+        "screen_id": "PUB-012",
+        "route": "/",
+        "section_order": [
+          "master-hero",
+          "master-use-cases",
+          "master-workflow",
+          "master-business",
+          "master-service-check",
+          "master-handoff",
+          "master-faq",
+          "master-closing"
+        ],
+        "primary_same_day_stories": [
+          "arranged purchase from a local seller or marketplace",
+          "ready-for-pickup local store order",
+          "personal item that needs to move locally"
+        ],
+        "marketplace_boundary": {
+          "may_name": "Facebook Marketplace as an illustrative purchase source",
+          "must_not_imply": [
+            "Facebook or marketplace partnership",
+            "marketplace checkout integration",
+            "Couranr pays the seller",
+            "Couranr negotiates the purchase",
+            "Couranr authenticates or appraises merchandise",
+            "buyer protection"
+          ]
+        },
+        "business_visibility": "For Business remains in public chrome, the hero cross-link, a dedicated homepage section and the closing action.",
+        "implementation_rule": "Reuse the existing /send, /business, routing, quote, payment, custody and recipient flows. This marketing change creates no second delivery engine and no marketplace subsystem."
+      },
+      "status": "decided",
+      "authority_file": "02_DECISION_REGISTRY.json",
+      "authority_section": "MKT-007.value — owner-approved 2026-09-25 homepage restructuring",
+      "affected_routes": [
+        "/",
+        "/send",
+        "/business",
+        "/sameday"
+      ],
+      "affected_screen_ids": [
+        "PUB-012",
+        "PUB-004",
+        "PUB-001",
+        "PUB-013"
+      ],
+      "affected_database_objects": [],
+      "affected_code_paths": [
+        "app/(couranr)/(public)/(master-public)/page.tsx",
+        "lib/couranr/public/masterSameDayCopy.ts",
+        "components/couranr/sameday/SendFlow.tsx",
+        "app/(couranr)/couranr.css",
+        "ui_screen_registry.json",
+        "docs/couranr-mvp/brand/COURANR_VISUAL_SYSTEM_V2_2.md"
+      ],
+      "conflict_with_current_code": {
+        "code_value": "PUB-012 is exactly three regions: audience-door hero, product taxonomy, service area.",
+        "code_location": "app/(couranr)/(public)/(master-public)/page.tsx and the PUB-012 composition contract",
+        "resolution": "Owner decision supersedes the three-region constraint. Preserve the two-path brand and governed claims, replace the abstract routing-first hierarchy with the eight-region sales-led structure.",
+        "remediation_commit": "homepage marketplace/use-case restructuring"
+      },
+      "implementation_phase": "10",
+      "acceptance_criteria": [
+        "A first-time visitor can identify arranged-purchase pickup, ready store pickup and personal-item delivery from the homepage without opening /sameday.",
+        "Pickup and send actions preserve intent into /send; the business action resolves to /business.",
+        "The page states that the user arranges the item and Couranr handles delivery.",
+        "Marketplace copy never implies Couranr participates in merchandise payment, negotiation, authentication or buyer protection.",
+        "Business remains discoverable above the fold and has a dedicated section.",
+        "The page uses governed service-area copy and no hand-typed price, market, mileage, operating-hour or availability value.",
+        "The page contains no fabricated metrics, testimonials, guarantees or partnerships."
+      ],
+      "decided_by": "owner",
+      "decided_at_utc": "2026-09-25T21:44:00Z"
     },
     {
       "id": "FND-001",

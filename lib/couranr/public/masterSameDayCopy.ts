@@ -19,8 +19,13 @@
 
 /** PUB-012, the Couranr master homepage. */
 export const MASTER_COPY = {
-  hero_headline: "Local delivery, built around you.",
-  hero_support: "Need one local delivery? Use Couranr Same Day. Run a business that wants to offer delivery to customers? Couranr for Business gives you the delivery operation behind it.",
+  hero_headline: "Already bought it? We’ll go get it.",
+  hero_support: "Couranr picks up eligible purchases you’ve already arranged—and delivers things you already have.",
+  hero_boundary: "You arrange the item. Couranr handles the trip.",
+  hero_pickup_cta: "Pick something up",
+  hero_send_cta: "Send something",
+  hero_business_prompt: "Delivering orders for your customers?",
+  hero_business_cta: "Couranr for Business",
   consumer_door_title: "Couranr Same Day",
   consumer_door_support: "Send something you have or pick up something you’ve already bought.",
   business_door_title: "Couranr for Business",
@@ -51,6 +56,70 @@ export const MASTER_COPY = {
   network_edge_case: "A business owner can still use Same Day for an occasional personal or one-off trip. What determines the product is the purpose of the delivery\u2014not whether you happen to own a business.",
   network_example: "Bought a cake and need it picked up? Same Day. Run the bakery and want Couranr delivering customer cake orders? For Business.",
   service_area_heading: "Where Couranr delivers",
+
+  use_cases_heading: "Here’s when Couranr comes in.",
+  marketplace_title: "Bought something on Facebook Marketplace?",
+  marketplace_body: "Arrange the purchase with the seller and confirm they can hand it to a courier. Couranr can collect an eligible item and bring it to you.",
+  marketplace_boundary: "Couranr handles delivery—not seller payments, negotiation or product authentication.",
+  route_story_brand: "Couranr",
+  ready_title: "Your order is ready. Your schedule isn’t.",
+  ready_body: "Dry cleaning, a print order or an eligible purchase from a local shop. Confirm it is ready and that the pickup location permits courier collection. Couranr handles the trip.",
+  send_title: "Something needs to get across town.",
+  send_body: "Keys at home. Documents at work. A gift for a friend. Send an eligible item from where it is to the person who needs it.",
+
+  workflow_heading: "Arrange the pickup. We’ll handle the delivery.",
+  workflow_titles: [
+    "Get the item ready",
+    "Tell us about the trip",
+    "Review your delivery",
+    "Couranr handles the trip",
+  ],
+  workflow_bodies: [
+    "Arrange the item with the seller, store or person holding it, and confirm courier collection.",
+    "Enter the pickup and destination, describe the item, and provide the required contact information.",
+    "See the delivery estimate before you submit. Couranr confirms availability, schedule and vehicle before capture.",
+    "The driver completes the required pickup process, and the recipient gets their own delivery information for handoff.",
+  ],
+  workflow_example: "Example: arrange a box of books with a local seller, confirm courier pickup, enter the seller’s address and your destination, review the delivery estimate, and Couranr handles the trip.",
+
+  business_heading: "Your customers order from you. We handle delivery.",
+  business_body: "Keep taking orders through your existing website, messages, phone or counter. Couranr for Business helps you organize delivery after the order is ready.",
+  business_points: [
+    "Manage customer deliveries in one workspace",
+    "Choose whether the business or customer pays",
+    "Follow fulfillment, tracking and proof",
+    "Keep delivery history together",
+  ],
+  business_cta: "Explore Couranr for Business",
+
+  check_heading: "See whether we can make the trip—and what it will cost.",
+  check_body: "Enter the pickup and destination and describe the item. Couranr checks the trip and shows the delivery estimate before you submit.",
+  check_payment: "Couranr confirms availability, schedule and vehicle before any payment is captured.",
+  check_cta: "Check my delivery",
+
+  handoff_heading: "Know how your item changes hands.",
+  handoff_pickup: "Couranr provides pickup verification for the person handing over the item. Keep it with that person and do not send it to the driver in advance.",
+  handoff_recipient: "When the delivery is confirmed, Couranr emails the recipient their own private tracking and handoff instructions.",
+  handoff_evidence: "Some shipments require additional pickup documentation based on the declared value.",
+  handoff_honesty: "Couranr documents what is presented and handed over. Couranr does not authenticate, appraise or certify merchandise.",
+
+  faq_heading: "A few things to know before you book.",
+  faq_questions: [
+    "Can Couranr collect a Facebook Marketplace purchase?",
+    "Does Couranr buy or pay for the item?",
+    "Does the seller or store need a Couranr Business account?",
+    "Can Couranr carry anything?",
+    "Does the recipient need to be there?",
+  ],
+  faq_answers: [
+    "Couranr can collect an eligible item when the purchase is already arranged and the seller agrees to courier pickup. Couranr is the delivery service, not the seller or marketplace.",
+    "No. Merchandise payments and agreements stay between you and the seller or store.",
+    "No for a Same Day pickup. The pickup party still needs to agree to collection and complete the required handoff.",
+    "No. Couranr checks shipment details and does not carry prohibited or restricted items. Some size, weight, value or handling needs may require review or may not be available.",
+    "Same Day requires an adult recipient and a recipient handoff step. The request flow tells you what is required for the shipment.",
+  ],
+  closing_headline: "One less trip to make.",
+  closing_support: "Pick up something you arranged, send something you have, or put Couranr to work for your business.",
 } as const;
 
 /** PUB-013, Couranr Same Day. */
@@ -239,16 +308,16 @@ export const SAME_DAY_COPY = {
 export const SEND_COPY = {
   trip_send_origin: "Where is the item now?",
   trip_pickup_origin: "Where should we pick it up?",
-  trip_pickup_hint: "Search for the business or enter its address.",
+  trip_pickup_hint: "Enter the address where the item will be collected.",
   trip_destination: "Where is it going?",
   item_question: "What are we delivering?",
-  item_example: "A birthday cake I already paid for at Main Street Bakery.",
+  item_example: "A box of books I already bought from a local seller.",
   /* INT-002: the AI disclosure, shown at the START of the item step in live
      mode — before any description is read. Registry MKT-005 owns the text. */
   item_ai_disclosure:
     "Couranr uses AI to read this description and suggest your shipment details. You confirm everything before you pay, and Couranr — not the AI — sets the price and what can be carried.",
   readiness_question: "Is it ready for pickup?",
-  readiness_yes: "Yes, the business says it’s ready",
+  readiness_yes: "Yes, they say it’s ready for pickup",
   readiness_no: "Not yet / I’m not sure",
   timing_question: "When do you need it?",
   timing_asap: "As soon as possible",

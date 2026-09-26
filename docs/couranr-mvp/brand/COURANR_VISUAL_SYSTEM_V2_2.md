@@ -2831,43 +2831,39 @@ anti-pattern §19.4 names by name.
 
 ### PUB-012 — Couranr master homepage
 
-**Budgets:** grid-dominant <= 1 · image-led >= 0 · product-proof >= 0 · workflow-rail == 0
+**Budgets:** grid-dominant <= 1 · image-led >= 2 · product-proof >= 1 · workflow-rail == 1
 
-Required states from `ui_screen_registry.json`: Default; mobile navigation. The
-page exists to route a visitor to one of MKT-004's two entry paths, so it is the
-shortest contract in the family — **exactly three governed regions**, and a
-fourth marketing section is a defect in this table rather than a styling choice.
+Required states from `ui_screen_registry.json`: Default; mobile navigation.
 
-**AMENDED 2026-09-18, by the owner, for marketing latitude.** This page
-previously read `grid-dominant <= 0 · image-led >= 1`. Both were changed, and
-the reasoning for each is different:
+**AMENDED 2026-09-25, by the owner, for first-customer comprehension.** MKT-007
+replaces the three-region audience router with an eight-region sales narrative.
+The homepage must answer the questions that otherwise become a sales
+conversation: what Couranr can pick up, what the customer arranges, how the trip
+works, how handoff is verified, and where Couranr for Business fits. MKT-004's
+two-path brand still governs; this is a hierarchy change, not a new product.
 
-- **`grid-dominant` 0 -> 1.** The original note said "`grid-dominant <= 0` is
-  the whole point": the obvious way to build a two-audience homepage is a card
-  grid of features, and §28 bans that template-filling. That reasoning still
-  holds and is why the cap is 1 rather than removed — one tiled region is a
-  deliberate choice a marketer can now make, two would make the page the card
-  cemetery the rule exists to prevent. §19's universal cap of two is unchanged
-  and this remains tighter than it, as §27.0 requires of any page-level cap.
-- **`image-led` 1 -> 0.** A FLOOR forces content to exist. Requiring a
-  photographic region whether or not the page wants one is the same
-  template-filling §28 bans, just pointed the other way — which is precisely
-  why `/pricing` was written `>= 0`. Stated deliberately here, per the rule
-  above that a `>= 0` in this family is a decision and not an omission. The
-  homepage still carries its photography; nothing now compels it to.
+One tiled use-case region is allowed because recognition is the job of that
+section. The rest of the page stays editorial. Facebook Marketplace may be
+named only as an example of where an already-arranged purchase originated; the
+page must never imply a marketplace partnership, checkout integration, seller
+payment, merchandise authentication, appraisal, or buyer protection. Business
+stays visible in the hero, its own section, public chrome and closing action.
 
-What did NOT change: §28 itself, §19's adjacency rule and cap of two, the
-three-region contract above, and every quality floor in §18/§23 — contrast, tap
-targets, overflow and the accessibility gates are correctness rather than taste
-and are not the marketer's to trade away.
-
-The two audience doors remain one editorial hero composition, not two tiles.
+The two image-led regions use photography already approved for PUB-012. The
+workflow is one connected sequence, and handoff is product proof rather than a
+generic trust-badge row. Market names remain governed; no price, mileage,
+operating hour, value ceiling or service boundary is retyped here.
 
 | # | `data-couranr-section` | required state / intent | device | `data-composition` (§19) | image-led | grid-dominant | product-proof |
 |---|---|---|---|---|---|---|---|
-| 1 | `master-hero` | Default — the brand line plus two photographic audience doors | asymmetric photo-led hero, consumer door first on mobile | `split-story` | true | false | false |
-| 2 | `master-network` | Default — which Couranr to use, and why the difference is purpose rather than speed | typography-led statement, no icons or cards | `editorial-statement` | false | false | false |
-| 3 | `master-service-area` | Default — consumer-neutral coverage reassurance | governed market names, no radius/ZIP/polygon | `structured-information-block` | false | false | false |
+| 1 | `master-hero` | Default — arranged pickup first, send second, Business visible | action-led copy beside approved consumer handoff photography | `split-story` | true | false | false |
+| 2 | `master-use-cases` | Default — Marketplace, ready local order, personal item | one recognition grid with marketplace boundary in copy | `structured-information-block` | false | true | false |
+| 3 | `master-workflow` | Default — four-step request-to-handoff explanation | connected numbered sequence with one worked example | `workflow-rail` | false | false | false |
+| 4 | `master-business` | Default — business path remains prominent | local-business photograph with copy and business action | `image-narrative` | true | false | false |
+| 5 | `master-service-check` | Default — route/estimate explanation with governed markets | asymmetric copy and actions; no fake quote or map | `split-story` | false | false | false |
+| 6 | `master-handoff` | Default — pickup, shipment evidence, recipient handoff | process evidence, not guarantees or trust badges | `product-proof` | false | false | true |
+| 7 | `master-faq` | Default — remaining first-customer objections | disclosure rows; essential boundaries stay in main copy | `editorial-statement` | false | false | false |
+| 8 | `master-closing` | Default — pickup, send and Business exits | navy close with all three paths | `full-bleed-interruption` | false | false | false |
 
 ### PUB-013 — Couranr Same Day
 

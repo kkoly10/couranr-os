@@ -493,16 +493,56 @@
           },
           {
             "n": 2,
-            "id": "master-network",
+            "id": "master-use-cases",
+            "composition": "structured-information-block",
+            "imageLed": "false",
+            "gridDominant": "true",
+            "productProof": "false"
+          },
+          {
+            "n": 3,
+            "id": "master-workflow",
+            "composition": "workflow-rail",
+            "imageLed": "false",
+            "gridDominant": "false",
+            "productProof": "false"
+          },
+          {
+            "n": 4,
+            "id": "master-business",
+            "composition": "image-narrative",
+            "imageLed": "true",
+            "gridDominant": "false",
+            "productProof": "false"
+          },
+          {
+            "n": 5,
+            "id": "master-service-check",
+            "composition": "split-story",
+            "imageLed": "false",
+            "gridDominant": "false",
+            "productProof": "false"
+          },
+          {
+            "n": 6,
+            "id": "master-handoff",
+            "composition": "product-proof",
+            "imageLed": "false",
+            "gridDominant": "false",
+            "productProof": "true"
+          },
+          {
+            "n": 7,
+            "id": "master-faq",
             "composition": "editorial-statement",
             "imageLed": "false",
             "gridDominant": "false",
             "productProof": "false"
           },
           {
-            "n": 3,
-            "id": "master-service-area",
-            "composition": "structured-information-block",
+            "n": 8,
+            "id": "master-closing",
+            "composition": "full-bleed-interruption",
             "imageLed": "false",
             "gridDominant": "false",
             "productProof": "false"
@@ -511,19 +551,19 @@
         "budgets": {
           "gridDominant": {
             "op": "<=",
-            "n": 0
+            "n": 1
           },
           "imageLed": {
             "op": ">=",
-            "n": 1
+            "n": 2
           },
           "productProof": {
             "op": ">=",
-            "n": 0
+            "n": 1
           },
           "workflowRail": {
             "op": "==",
-            "n": 0
+            "n": 1
           }
         }
       },

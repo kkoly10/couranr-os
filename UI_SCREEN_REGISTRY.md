@@ -276,11 +276,11 @@
 
 - **Route/state:** `/`
 - **Tier / phase:** Core / Phase 10
-- **Purpose:** Present the one Couranr master brand and route a visitor to the entry path that fits them — Couranr Same Day for a person sending or collecting something, Couranr for Business for a local business adding delivery.
-- **Allowed actions:** Enter Couranr Same Day; enter Couranr for Business; sign in to a business account.
+- **Purpose:** Sell the master Couranr brand by helping a first-time visitor recognize a real Same Day use case, understand what Couranr handles, and enter pickup, send or Couranr for Business without needing a sales conversation.
+- **Allowed actions:** Pick something up; send something; enter Couranr for Business; check a delivery; review service-area reassurance; read booking FAQ.
 - **Required states:** Default; mobile navigation.
-- **Authoritative source:** MKT-004 and LEG-004 in the root decision registry; PRODUCT_SPEC.md §3 markets and operating model
-- **Mandatory correction/constraint:** Exactly three governed content regions — master-hero, master-network, master-service-area — plus global public chrome. No FAQ, feature grid, testimonial, product catalog or extra product tiles. No fake metrics, guarantees, phone support, subscriptions, or Maryland launch marketing. This page carries no merchant-positioning claim; MKT-002 governs those and they live on PUB-001.
+- **Authoritative source:** MKT-004, MKT-005, MKT-007 and LEG-004 in the root decision registry; PRODUCT_SPEC.md §3 markets and operating model
+- **Mandatory correction/constraint:** Exactly eight governed content regions — master-hero, master-use-cases, master-workflow, master-business, master-service-check, master-handoff, master-faq, master-closing — plus global public chrome. Marketplace references are illustrative arranged-purchase examples only: no partnership, marketplace checkout, seller payment, negotiation, merchandise authentication or buyer-protection claim. For Business stays visible but must not claim Couranr generates merchant customers, leads or product sales. No fake metrics, testimonials, guarantees, phone support, subscriptions, or Maryland launch marketing.
 - **Canonical visual:** `Derived from the PUB-001 public family design system; no separate approved mock.`
 
 #### PUB-013 — Couranr Same Day

@@ -4097,6 +4097,366 @@
   color: var(--couranr-text);
 }
 
+/* ── PUB-012 MKT-007: first-customer sales narrative ──────────────────────
+   This block is intentionally additive. The older master selectors above are
+   retained for historical/foundation assertions, but the restructured page no
+   longer renders them. The one dominant grid is master-use-cases; every other
+   section earns hierarchy from typography, photography, rules or sequence. */
+
+.cr-master-sales-hero {
+  display: grid;
+  gap: var(--couranr-space-8);
+  align-items: center;
+}
+
+.cr-master-sales-hero__lead {
+  display: grid;
+  gap: var(--couranr-space-4);
+  align-content: center;
+}
+
+.cr-master-sales-hero__lead > h1,
+.cr-master-sales-hero__lead > p { margin: 0; }
+
+.cr-master-sales-hero__boundary {
+  max-width: 38ch;
+  padding-left: var(--couranr-space-4);
+  border-left: 4px solid var(--couranr-gold);
+  font-weight: 700;
+  color: var(--couranr-text);
+}
+
+.cr-master-sales-hero__actions { justify-content: flex-start; }
+
+.cr-master-sales-hero__business {
+  padding-top: var(--couranr-space-3);
+  border-top: 1px solid var(--couranr-border);
+  font-size: var(--couranr-text-sm);
+  color: var(--couranr-text);
+}
+
+.cr-master-sales-hero__business a {
+  font-weight: 700;
+  color: var(--couranr-route-blue);
+}
+
+.cr-master-sales-hero__media {
+  display: block;
+  overflow: hidden;
+  border-radius: var(--couranr-radius-lg);
+  min-height: 0;
+}
+
+.cr-master-sales-hero__img,
+.cr-master-business__img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  aspect-ratio: 3 / 2;
+}
+
+.cr-master-usecases {
+  display: grid;
+  gap: var(--couranr-space-4);
+  margin-top: var(--couranr-space-8);
+}
+
+.cr-master-usecase {
+  display: grid;
+  align-content: start;
+  gap: var(--couranr-space-3);
+  padding: var(--couranr-space-6);
+  border: 1px solid var(--couranr-border);
+  border-radius: var(--couranr-radius-lg);
+  background: var(--couranr-surface);
+}
+
+.cr-master-usecase h3,
+.cr-master-workflow h3,
+.cr-master-handoff h3 {
+  margin: 0;
+  font-family: var(--couranr-font-display);
+  font-size: var(--couranr-text-xl);
+  line-height: 1.25;
+  color: var(--couranr-text);
+}
+
+.cr-master-usecase p,
+.cr-master-workflow p,
+.cr-master-handoff p { margin: 0; }
+
+.cr-master-usecase--marketplace {
+  background:
+    linear-gradient(135deg, rgba(244, 183, 64, 0.15), rgba(244, 183, 64, 0)),
+    var(--couranr-surface);
+}
+
+.cr-master-usecase__copy {
+  display: grid;
+  gap: var(--couranr-space-3);
+}
+
+.cr-master-usecase__boundary {
+  padding-top: var(--couranr-space-3);
+  border-top: 1px solid var(--couranr-border);
+  font-size: var(--couranr-text-sm);
+  font-weight: 600;
+}
+
+.cr-master-usecase__link {
+  width: fit-content;
+  font-weight: 700;
+  color: var(--couranr-route-blue);
+}
+
+.cr-master-route-story {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--couranr-space-3);
+  margin-top: var(--couranr-space-3);
+  padding-top: var(--couranr-space-4);
+  border-top: 1px solid var(--couranr-border);
+  font-family: var(--couranr-font-display);
+  font-size: var(--couranr-text-base);
+}
+
+.cr-master-route-story strong { color: var(--couranr-navy); }
+
+.cr-master-workflow {
+  position: relative;
+  display: grid;
+  gap: var(--couranr-space-5);
+  margin: var(--couranr-space-8) 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.cr-master-workflow__step {
+  position: relative;
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: var(--couranr-space-4);
+  align-items: start;
+}
+
+.cr-master-workflow__n,
+.cr-master-handoff__n {
+  display: grid;
+  place-items: center;
+  width: 2.25rem;
+  height: 2.25rem;
+  flex: 0 0 auto;
+  border-radius: 999px;
+  background: var(--couranr-navy);
+  font-family: var(--couranr-font-mono);
+  font-size: var(--couranr-text-sm);
+  font-weight: 700;
+  color: var(--couranr-surface);
+}
+
+.cr-master-workflow__step > div {
+  display: grid;
+  gap: var(--couranr-space-2);
+}
+
+.cr-master-workflow__example {
+  max-width: 68ch;
+  margin: var(--couranr-space-8) 0 0;
+  padding: var(--couranr-space-5) 0 var(--couranr-space-5) var(--couranr-space-5);
+  border-left: 4px solid var(--couranr-gold);
+  font-weight: 600;
+}
+
+.cr-master-business {
+  display: grid;
+  gap: var(--couranr-space-8);
+  align-items: center;
+}
+
+.cr-master-business__media {
+  overflow: hidden;
+  border-radius: var(--couranr-radius-lg);
+}
+
+.cr-master-business__copy {
+  display: grid;
+  gap: var(--couranr-space-4);
+  align-content: center;
+}
+
+.cr-master-business__copy > h2,
+.cr-master-business__copy > p { margin: 0; }
+
+.cr-master-business__points {
+  display: grid;
+  gap: var(--couranr-space-2);
+  margin: 0;
+  padding-left: var(--couranr-space-5);
+}
+
+.cr-master-business__copy .cr-button { width: fit-content; }
+
+.cr-master-check__body {
+  display: grid;
+  gap: var(--couranr-space-4);
+  align-content: center;
+}
+
+.cr-master-check__body > p { margin: 0; }
+.cr-master-check__body .cr-mkt-cta-row { justify-content: flex-start; }
+
+.cr-master-handoff {
+  display: grid;
+  gap: 0;
+  margin-top: var(--couranr-space-8);
+  border-top: 1px solid var(--couranr-border);
+  border-bottom: 1px solid var(--couranr-border);
+}
+
+.cr-master-handoff__item {
+  display: grid;
+  gap: var(--couranr-space-3);
+  padding: var(--couranr-space-6) 0;
+}
+
+.cr-master-handoff__item + .cr-master-handoff__item {
+  border-top: 1px solid var(--couranr-border);
+}
+
+.cr-master-handoff__honesty {
+  max-width: 68ch;
+  margin: var(--couranr-space-6) 0 0;
+  font-weight: 600;
+}
+
+.cr-master-faq {
+  width: min(100%, 58rem);
+  margin-top: var(--couranr-space-6);
+  border-top: 1px solid var(--couranr-border);
+}
+
+.cr-master-faq__item { border-bottom: 1px solid var(--couranr-border); }
+
+.cr-master-faq__item summary {
+  min-height: 3.5rem;
+  padding: var(--couranr-space-4) var(--couranr-space-1);
+  cursor: pointer;
+  font-family: var(--couranr-font-display);
+  font-size: var(--couranr-text-lg);
+  font-weight: 650;
+  color: var(--couranr-text);
+}
+
+.cr-master-faq__item p {
+  max-width: 68ch;
+  margin: 0;
+  padding: 0 var(--couranr-space-1) var(--couranr-space-5);
+}
+
+.cr-master-closing__actions { align-items: center; }
+
+.cr-master-closing__business {
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+  padding-inline: var(--couranr-space-2);
+  font-weight: 700;
+  color: var(--couranr-surface);
+}
+
+.cr-master-closing__business:hover { color: var(--couranr-gold); }
+
+@media (min-width: 760px) {
+  .cr-master-usecases {
+    grid-template-columns: minmax(0, 1.15fr) minmax(0, 0.85fr);
+  }
+
+  .cr-master-usecase--marketplace {
+    grid-column: 1 / -1;
+    grid-template-columns: minmax(0, 1.35fr) minmax(15rem, 0.65fr);
+    align-items: stretch;
+  }
+
+  .cr-master-usecase--marketplace .cr-master-route-story {
+    margin-top: 0;
+    padding-top: 0;
+    padding-left: var(--couranr-space-5);
+    border-top: 0;
+    border-left: 1px solid var(--couranr-border);
+    align-content: center;
+  }
+
+  .cr-master-handoff {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .cr-master-handoff__item {
+    padding: var(--couranr-space-6);
+  }
+
+  .cr-master-handoff__item:first-child { padding-left: 0; }
+  .cr-master-handoff__item:last-child { padding-right: 0; }
+
+  .cr-master-handoff__item + .cr-master-handoff__item {
+    border-top: 0;
+    border-left: 1px solid var(--couranr-border);
+  }
+}
+
+@media (min-width: 900px) {
+  .cr-master-sales-hero,
+  .cr-master-business {
+    grid-template-columns: minmax(0, 1.02fr) minmax(0, 0.98fr);
+    gap: var(--couranr-space-10);
+  }
+
+  .cr-master-business__media { order: 0; }
+  .cr-master-business__copy { order: 1; }
+
+  .cr-master-workflow {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 0;
+  }
+
+  .cr-master-workflow::before {
+    content: "";
+    position: absolute;
+    top: 1.1rem;
+    left: 1.1rem;
+    right: 1.1rem;
+    height: 1px;
+    background: var(--couranr-border);
+  }
+
+  .cr-master-workflow__step {
+    grid-template-columns: 1fr;
+    gap: var(--couranr-space-4);
+    padding-right: var(--couranr-space-6);
+  }
+
+  .cr-master-workflow__n {
+    position: relative;
+    z-index: 1;
+  }
+}
+
+@media (max-width: 640px) {
+  .cr-master-sales-hero__img,
+  .cr-master-business__img { aspect-ratio: 4 / 5; }
+
+  .cr-master-sales-hero__actions,
+  .cr-master-closing__actions {
+    align-items: stretch;
+  }
+
+  .cr-master-sales-hero__actions .cr-button,
+  .cr-master-closing__actions .cr-button {
+    width: 100%;
+  }
+}
+
 /* ── PUB-013, Couranr Same Day ──────────────────────────────────────────── */
 
 /* The hero's mobile requirement is a CONTRACT term, not a preference: the
