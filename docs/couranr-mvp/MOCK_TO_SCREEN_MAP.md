@@ -24,12 +24,12 @@ renamed, or deleted, and none will be.
 | | count |
 |---|---|
 | PNGs at repo root | 99 |
-| …that map to one of the 68 registry screens | 69 |
+| …that map to one of the 71 registry screens | 69 |
 | …that depict a screen **not** in the registry, or are photography | 30 |
 | …unaccounted for | **0** |
-| Registry screens with at least one mock | 50 of 68 |
-| Registry screens with **no** mock | 18 |
-| …of which "no mock" is correct by design | 6 (PUB-008…013) |
+| Registry screens with at least one mock | 50 of 71 |
+| Registry screens with **no** mock | 21 |
+| …of which "no mock" is correct by design | 9 (PUB-008…019) |
 | …leaving real design gaps | **12** |
 
 Those counts are produced, not asserted: `npm run check:mocks`
@@ -37,9 +37,11 @@ re-derives them from disk and fails if any filename in this document does not
 exist, if any root PNG is unclaimed, or if a file is claimed twice.
 
 `PUB-008` /pricing · `PUB-009` /businesses · `PUB-010` /service-areas ·
-`PUB-011` /how-it-works · `PUB-012` / · `PUB-013` /sameday carry `"image": null`
-and derive their design from the PUB-001 public family rather than from a
-separate approved mock. Those six are not gaps.
+`PUB-011` /how-it-works · `PUB-012` / · `PUB-013` /sameday · `MER-017`
+/app/business/routes · `MER-018` /app/business/routes/new · `MER-019`
+/app/business/routes/[id] carry `"image": null` and derive their design from the
+PUB-001 public family rather than from a separate approved mock. Those nine are
+not gaps.
 
 ## Authority — what a mock does and does not decide
 
@@ -152,6 +154,9 @@ the same screen.
     "2EF4F6B4-803D-487A-846B-178DAEEE1957.png",
     "88802AA2-1520-405B-906C-0BDC02B64B5E.png"
   ],
+  "MER-017": [],
+  "MER-018": [],
+  "MER-019": [],
   "DRV-001": [
     "3C8B6C70-5641-4041-97DC-FAF90344A1CC.png"
   ],
@@ -343,7 +348,7 @@ integrations · `E7FD20C6-1022` merchant exceptions & resolutions ·
 
 ## Registry screens with no mock
 
-Twelve, excluding the six that are `image: null` by design:
+Twelve, excluding the nine that are `image: null` by design:
 
 `PUB-004` /send, /estimate and /request/[merchantSlug] · `MER-008`
 /app/business/customers · `MER-010` /app/business/presets · `DRV-002`

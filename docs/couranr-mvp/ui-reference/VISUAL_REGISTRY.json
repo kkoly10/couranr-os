@@ -938,6 +938,18 @@
           "88802AA2-1520-405B-906C-0BDC02B64B5E.png"
         ]
       },
+      "MER-017": {
+        "visual_authority": "derived",
+        "root_sources": []
+      },
+      "MER-018": {
+        "visual_authority": "derived",
+        "root_sources": []
+      },
+      "MER-019": {
+        "visual_authority": "derived",
+        "root_sources": []
+      },
       "DRV-001": {
         "visual_authority": "canonical",
         "root_sources": [

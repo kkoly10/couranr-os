@@ -92,6 +92,9 @@
 | MER-014 | Merchant settings | `/app/business/settings` | Core | 4–8 | Desktop-first responsive | `canonical-mvp-images/merchant/MER-014_merchant-settings.png` |
 | MER-015 | Team and permissions | `/app/business/settings/team` | Core | 4 | Desktop-first responsive | `canonical-mvp-images/merchant/MER-015_team-and-permissions.png` |
 | MER-016 | Billing settings | `/app/business/settings/billing` | Core | 6 | Desktop-first responsive | `canonical-mvp-images/merchant/MER-016_billing-settings.png` |
+| MER-017 | Route Runs list | `/app/business/routes` | Core | Route Run V1 | Desktop-first responsive | `Derived from MER-004 merchant list design system; no separate approved mock.` |
+| MER-018 | Create Route Run | `/app/business/routes/new` | Core | Route Run V1 | Desktop-first responsive | `Derived from MER-005/MER-006 form and review design system; no separate approved mock.` |
+| MER-019 | Route Run detail | `/app/business/routes/[id]` | Core | Route Run V1 | Desktop-first responsive | `Derived from MER-007 merchant detail design system; no separate approved mock.` |
 
 ### Driver
 
@@ -471,6 +474,39 @@
 - **Authoritative source:** Spec §§7, 10, 16
 - **Mandatory correction/constraint:** No monthly subscription invoice during pilot. Separate delivery charge from product sale.
 - **Canonical visual:** `canonical-mvp-images/merchant/MER-016_billing-settings.png`
+
+#### MER-017 — Route Runs list
+
+- **Route/state:** `/app/business/routes`
+- **Tier / phase:** Core / Phase Route Run V1
+- **Purpose:** Find Business Route Run drafts, accepted stop sets, and archived drafts without collapsing the child deliveries they group.
+- **Allowed actions:** Create Route Run; open Route Run; review state and combined child-delivery estimates.
+- **Required states:** Empty; draft; accepted; archived; error.
+- **Authoritative source:** RR-001 and RR-002 in the root decision registry; ROUTE_RUN_IMPLEMENTATION.md
+- **Mandatory correction/constraint:** Business only. A Route Run groups separate canonical single-destination deliveries. Accepted does not mean paid, booked, assigned, picked up, or in transit. Never revive the retired $16.99/stop Route Saver price.
+- **Canonical visual:** `Derived from MER-004 merchant list design system; no separate approved mock.`
+
+#### MER-018 — Create Route Run
+
+- **Route/state:** `/app/business/routes/new`
+- **Tier / phase:** Core / Phase Route Run V1
+- **Purpose:** Enter one common pickup, create two to five canonical child delivery drafts, identify each package, calculate child delivery estimates, and accept one immutable stop set.
+- **Allowed actions:** Choose common pickup; add/reorder/remove stops; enter recipient/package/value facts; calculate child estimates; save draft; accept stop set.
+- **Required states:** Blank; validating; child preparation; draft review; stale child; acceptance failure; accepted.
+- **Authoritative source:** RR-001 and RR-002 in the root decision registry; ROUTE_RUN_IMPLEMENTATION.md
+- **Mandatory correction/constraint:** V1 is merchant-paid only, 2–5 stops, one common pickup and one common pickup timing, no restricted items, child packages at most 50 lb, $500 aggregate declared-value ceiling, separate immutable child quotes, no automatic route discount, and no route optimization call from this builder. Acceptance claims children but does not book/pay/dispatch/create custody. Once any child draft is created during an attempt, shared facts and prepared stop facts stay locked so a retry cannot silently diverge from server state.
+- **Canonical visual:** `Derived from MER-005/MER-006 form and review design system; no separate approved mock.`
+
+#### MER-019 — Route Run detail
+
+- **Route/state:** `/app/business/routes/[id]`
+- **Tier / phase:** Core / Phase Route Run V1
+- **Purpose:** Show one Route Run, its immutable stop order, child delivery links, reference estimate sum, stale/claim evidence, and the exact authority currently reached.
+- **Allowed actions:** Accept draft; archive draft; open child delivery; return to Route Runs.
+- **Required states:** Draft; stale draft; accepted; archived; error.
+- **Authoritative source:** RR-001 and RR-002 in the root decision registry; ROUTE_RUN_IMPLEMENTATION.md
+- **Mandatory correction/constraint:** Do not imply accepted means booked or paid. Recipient/customer data remains child-scoped. No direct merchant dispatch, custody, refund, or arbitrary child-state mutation. Accepted children are frozen against standalone mutation until the later Route executor authority replaces that guard.
+- **Canonical visual:** `Derived from MER-007 merchant detail design system; no separate approved mock.`
 
 ### Driver contracts
 

@@ -77,6 +77,7 @@ const NAV_LABELS: Record<string, string> = {
   // Merchant
   "MER-001": "Dashboard",
   "MER-004": "Deliveries",
+  "MER-017": "Routes",
   "MER-008": "Customers",
   "MER-010": "Presets",
   "MER-012": "Messages",

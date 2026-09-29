@@ -448,7 +448,7 @@ describe("public navigation is the owner-locked order", () => {
        are named so a future reader can tell a legitimate promotion from an
        accidental reordering. */
     expect(navigationFor("merchant").map((i) => i.screenId)).toEqual([
-      "MER-001", "MER-004", "MER-008", "MER-010", "MER-012", "MER-013", "MER-014",
+      "MER-001", "MER-004", "MER-017", "MER-008", "MER-010", "MER-012", "MER-013", "MER-014",
     ]);
     expect(navigationFor("driver").map((i) => i.screenId)).toEqual([
       "DRV-001", "DRV-008", "DRV-009", "DRV-010",

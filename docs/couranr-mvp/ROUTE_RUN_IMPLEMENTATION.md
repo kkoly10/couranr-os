@@ -1,4 +1,4 @@
-# Business Route Runs — RR-001 implementation boundary
+# Business Route Runs — RR-001 / RR-002 implementation boundary
 
 Base reviewed: `a19cfe11a0d81837720c2356dbdd4ac0bac7ba42` (current main at the 2026-09-26 continuation recon).
 
@@ -8,11 +8,11 @@ RR-001 is Business-only: one common pickup, two to five separate canonical one-d
 
 The historical `$16.99 per stop` Route Saver price stays retired. V1 route price is the exact sum of accepted child delivery quotes, with no automatic route discount. The launch aggregate declared-value ceiling is `$500` across the whole Route Run in addition to each child's own limit. Unknown cargo/value evidence fails closed.
 
-## Readiness slice implemented here
+## Closed RR-001 draft foundation
 
 The draft foundation is additive and deliberately non-executable. Four tables store the route shell, immutable draft revisions, ordered child references/snapshots and append-only route events. The Business API reads/saves/revises only drafts. It refuses browser prices, driver ids/states, foreign/duplicate children, customer payers, submitted children, missing canonical quotes and non-common pickups.
 
-Every response is `draftOnly: true` and `bookingAvailable: false`. The database allows only `route_state = 'draft'`; admission inspection always includes `route_execution_not_released`. A saved draft cannot capture payment, create a Delivery, reserve a driver/vehicle, issue custody credentials or activate a stop. Draft membership does not claim a child, so a child submitted independently simply makes the draft stale.
+RR-001 responses were `draftOnly: true` and `bookingAvailable: false`, with only `route_state = 'draft'`. RR-002 extends the stop-set lifecycle below; admission inspection still includes `route_execution_not_released`. A saved draft cannot capture payment, create a Delivery, reserve a driver/vehicle, issue custody credentials or activate a stop. Draft membership does not claim a child, so a child submitted independently simply makes the draft stale.
 
 This readiness slice also closes two prerequisites found during the 2026-09-26 adversarial recon:
 
@@ -32,11 +32,21 @@ Problem-report audience migration: `20260926013000_couranr_customer_problem_audi
 
 These are database evidence only. They are not evidence of live multi-stop payment, dispatch or physical custody.
 
+## Implemented and verified RR-002 — Route Builder + accepted Route contract
+
+Business Routes / New Route / Route detail are implemented as MER-017 / MER-018 / MER-019. Shared pickup and timing are entered once; each of two to five stops uses the existing canonical Business request and immutable quote commands, its own recipient email, package manifest, weight and declared value. V1 refuses restricted items, children above 50 lb and aggregate declared value above $500. Prices remain the sum of canonical child quotes; the server derives protection level.
+
+`20260926043000_couranr_route_run_acceptance.sql` extends Route state to `draft / accepted / abandoned`. Acceptance atomically revalidates and claims every child, freezes the exact accepted version and preserves quote approval. Accepted children are blocked from ordinary standalone mutation. Draft abandonment is idempotent. The paired rollback refuses once semantic acceptance, abandonment or declared-value history exists.
+
+Executed RR-002 evidence on the working tree based on `29ba410f8c5b6c777835a5d1f2a192e7f5a9f632`:
+
+- `npm run test:route-run-acceptance`: 90/90 real PostgreSQL adversarial checks, including empty forward/rollback/forward, immutable accepted version, atomic claims, approval beyond the original quote-expiry window, replay, child mutation refusals, risk gates, overlapping acceptance and standalone-submit races, ACLs and semantic rollback refusal. Acceptance creates no obligations, service plans, deliveries or assignments.
+- `npm run test:route-run-merchant`: 17/17 authenticated disposable Chromium checks through the real Next/API/PostgREST/PostgreSQL stack. It proves draft list and child sum, initial two-stop builder with no provider request merely from rendering, owner acceptance and two persisted claims, truthful unbooked copy, viewer read-only controls and mobile detail without overflow. Four screenshots live under `e2e/screenshots/route-run/`. Cleanup closes the owned services, verifies their ports are free, restores `tsconfig.json` and removes its isolated build.
+- `tests/couranr-route-run-builder.dom.test.tsx`: 6/6 builder interaction checks, including the adversarial in-flight editing regression; the focused Route API suite: 22/22.
+
+The browser suite uses the repository's disposable auth gateway rather than live GoTrue and does not type provider-backed addresses or execute archive/reorder. Neither this suite nor acceptance is evidence of live Route payment, booking, dispatch, assignment, pickup, custody or driver execution. **Accepted means the stop set is frozen; the Route is not operational.**
+
 ## Next implementation slices
-
-### RR-002 — Route Builder + accepted Route contract
-
-Build Business Routes / New Route / Route detail. Shared pickup is entered once; each stop still creates or references a canonical child request with its own recipient, manifest, weight/value and quote. Add explicit draft abandonment so obsolete drafts do not accumulate indefinitely. Accepted versions freeze exact child/quote identities, stop order, route evidence and the RR-001 aggregate-value policy. Acceptance must atomically claim all children against standalone submission and ordinary dispatch.
 
 ### RR-003 — reusable Business payment + route settlement + resource reservation
 

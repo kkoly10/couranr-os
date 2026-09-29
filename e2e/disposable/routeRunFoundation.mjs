@@ -21,9 +21,14 @@ function refuses(label, sql, marker) {
 }
 const migration = readFileSync(resolve(ROOT, "supabase/migrations/20260923200000_couranr_route_run_draft_foundation.sql"), "utf8");
 const rollback = readFileSync(resolve(ROOT, "supabase/rollbacks/20260923200000_couranr_route_run_draft_foundation.rollback.sql"), "utf8");
+const acceptanceMigration = readFileSync(resolve(ROOT, "supabase/migrations/20260926043000_couranr_route_run_acceptance.sql"), "utf8");
+const acceptanceRollback = readFileSync(resolve(ROOT, "supabase/rollbacks/20260926043000_couranr_route_run_acceptance.rollback.sql"), "utf8");
 try {
   up({ quiet: true });
   check("all migrations replay with the route foundation", one("select to_regclass('public.couranr_route_runs') is not null"), "t");
+  // RR-002 extends RR-001. Remove the empty extension before probing the RR-001
+  // rollback itself, then put both layers back.
+  one(acceptanceRollback);
   check(
     "Route Run foreign-key hardening indexes are present",
     one(`select count(*) from pg_indexes where schemaname='public' and indexname in (
@@ -35,6 +40,7 @@ try {
   one(rollback);
   check("empty rollback removes only the route substrate", one("select to_regclass('public.couranr_route_runs') is null and to_regclass('public.couranr_deliveries') is not null"), "t");
   one(migration);
+  one(acceptanceMigration);
   check("forward replay after rollback", one("select to_regclass('public.couranr_route_run_stops') is not null"), "t");
 
   const biz = one("insert into public.business_accounts(name,status) values('Route fixture','active') returning id");
@@ -121,6 +127,9 @@ try {
   check("stored child version is immutable", one(`select request_version from public.couranr_route_run_stops s join public.couranr_route_run_versions v on v.id=s.route_version_id where v.route_run_id='${routeId}' and v.version=1 and s.request_id='${a.requestId}'`), String(a.version));
   one(`update public.business_members set status='disabled' where business_account_id='${biz}' and user_id='${manager}'`);
   refuses("membership revocation enforced on the next read", read(manager), "route_business_access_denied");
+  // RR-002 itself has no accepted/archive/value semantics in this suite, so it
+  // can be removed cleanly; RR-001 must still refuse to erase the draft history.
+  one(acceptanceRollback);
   refuses("rollback preserves merchant semantic data", rollback, "route_draft_rollback_refuses_semantic_use");
   check("failed rollback leaves draft readable", JSON.parse(one(read())).version, 3);
   check("draft saving never creates payments", one("select count(*) from public.couranr_payment_obligations"), "0");

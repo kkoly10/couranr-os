@@ -3139,11 +3139,11 @@
     {
       "id": "CLS-002",
       "category": "canonical/deferred/archive classification",
-      "decision": "The canonical MVP is sixty-eight screens: sixty-four Core and four MVP-complete. PUB-012 (Couranr master homepage) and PUB-013 (Couranr Same Day) are added as Core. This amends ONLY CLS-001's classification counts; every other part of CLS-001 — the archived domains, the post-MVP and rejected inventories, the mvp_complete set, and the rule that no post-MVP screen appears in navigation — is unchanged and remains in force.",
+      "decision": "The canonical MVP is seventy-one screens: sixty-seven Core and four MVP-complete. PUB-012/PUB-013 and the RR-002 Business Route Run screens MER-017/MER-018/MER-019 are Core. This amends only the classification counts and added-screen inventory; every other part of CLS-001 remains in force.",
       "amends": "CLS-001",
       "value": {
-        "canonical_screens": 68,
-        "core": 64,
+        "canonical_screens": 71,
+        "core": 67,
         "mvp_complete": 4,
         "mvp_complete_ids": [
           "OPS-014",
@@ -3153,9 +3153,12 @@
         ],
         "added_screen_ids": [
           "PUB-012",
-          "PUB-013"
+          "PUB-013",
+          "MER-017",
+          "MER-018",
+          "MER-019"
         ],
-        "amended_scope": "CLS-001.value.canonical_screens, .core and .mvp_complete only",
+        "amended_scope": "CLS-001.value.canonical_screens, .core and added Core screen ids only",
         "unchanged_from_cls_001": [
           "archived_domains",
           "post_mvp_examples",
@@ -3169,11 +3172,17 @@
       "authority_section": "the screens array (section numbers are the rendered view's; UI_SCREEN_REGISTRY.md is generated from this source)",
       "affected_routes": [
         "/",
-        "/sameday"
+        "/sameday",
+        "/app/business/routes",
+        "/app/business/routes/new",
+        "/app/business/routes/[id]"
       ],
       "affected_screen_ids": [
         "PUB-012",
-        "PUB-013"
+        "PUB-013",
+        "MER-017",
+        "MER-018",
+        "MER-019"
       ],
       "affected_database_objects": [],
       "affected_code_paths": [
@@ -3182,10 +3191,10 @@
       ],
       "conflict_with_current_code": {
         "code_value": {
-          "canonical_screens": 66,
-          "core": 62
+          "canonical_screens": 68,
+          "core": 64
         },
-        "code_location": "ui_screen_registry.json before this amendment",
+        "code_location": "ui_screen_registry.json before RR-002 Route Run screens were added",
         "resolution": "The screen source and this record are reconciled mechanically by `npm run check:governance`, which fails if they disagree — so the count cannot be changed in one place only.",
         "remediation_commit": "authority consolidation Phase D"
       },
@@ -3195,7 +3204,10 @@
         "CLS-001 remains readable as the historical record of the sixty-six-screen classification."
       ],
       "decided_by": "owner",
-      "decided_at_utc": "2026-08-29T00:00:00Z"
+      "decided_at_utc": "2026-08-29T00:00:00Z",
+      "amended_by": [
+        "RR-002"
+      ]
     },
     {
       "id": "MKT-005",
@@ -3912,7 +3924,121 @@
         "A future accepted Route Run must atomically claim all children against standalone submission and dispatch before execution can become available."
       ],
       "decided_by": "owner",
-      "decided_at_utc": "2026-09-26T05:25:00Z"
+      "decided_at_utc": "2026-09-26T05:25:00Z",
+      "extended_by": [
+        "RR-002"
+      ]
+    },
+    {
+      "id": "RR-002",
+      "category": "business route run accepted contract and merchant builder",
+      "decision": "A Business Route Run draft becomes an accepted stop set only through one atomic server command that revalidates every child, freezes the exact Route version, and claims every child against standalone mutation. Accepted is intentionally not booked: payment, driver/vehicle reservation, pickup and custody remain unavailable until later Route Run authorities ship. Businesses build Route Runs from one shared pickup and 2–5 separate canonical merchant-paid child deliveries; each child receives its own recipient/package facts, immutable quote, declared shipment value and protection level. Drafts may be archived so abandoned work does not consume the active draft quota.",
+      "extends": "RR-001",
+      "value": {
+        "screens": [
+          "MER-017",
+          "MER-018",
+          "MER-019"
+        ],
+        "routes": [
+          "/app/business/routes",
+          "/app/business/routes/new",
+          "/app/business/routes/[id]"
+        ],
+        "builder": {
+          "common_pickup_once": true,
+          "stop_count_min": 2,
+          "stop_count_max": 5,
+          "merchant_paid_only": true,
+          "restricted_items_supported": false,
+          "route_optimization_call_in_builder": false,
+          "child_creation": "existing canonical Business delivery-request and quote commands; no second delivery engine",
+          "recipient_email_required_by_builder": true,
+          "package_identity": "per child at the common pickup",
+          "aggregate_declared_value_limit_cents": 50000,
+          "child_weight_limit_lb": 50,
+          "common_pickup_timing": true
+        },
+        "acceptance": {
+          "atomic": true,
+          "accepted_is_booked": false,
+          "accepted_is_paid": false,
+          "accepted_is_dispatched": false,
+          "accepted_creates_custody": false,
+          "claim_uniqueness": "one accepted Route Run per child request",
+          "revalidates": [
+            "business tenant",
+            "draft request state",
+            "merchant payer",
+            "single destination",
+            "exact request version",
+            "exact quote version",
+            "pickup-manifest version",
+            "common pickup",
+            "unexpired estimated quote",
+            "restricted class none",
+            "declared child value",
+            "aggregate declared value <= $500",
+            "child weight <= 50 lb",
+            "common pickup timing"
+          ],
+          "standalone_child_mutation_after_acceptance": "blocked at database trigger until the Route executor authority replaces that guard"
+        },
+        "draft_abandonment": "draft -> abandoned only; accepted cancellation is a later governed workflow",
+        "business_declared_value": "draft-only authenticated Business command; browser supplies integer cents, server derives protection level, database re-derives/enforces it"
+      },
+      "status": "decided",
+      "owner_approved": true,
+      "owner_approved_on": "2026-09-26",
+      "authority_file": "02_DECISION_REGISTRY.json",
+      "authority_section": "RR-002.value — owner-approved Route Run builder/acceptance continuation after adversarial recon",
+      "affected_routes": [
+        "/app/business/routes",
+        "/app/business/routes/new",
+        "/app/business/routes/[id]",
+        "/api/couranr/merchant/route-runs",
+        "/api/couranr/merchant/route-runs/declared-value"
+      ],
+      "affected_screen_ids": [
+        "MER-017",
+        "MER-018",
+        "MER-019"
+      ],
+      "affected_database_objects": [
+        "couranr_route_runs",
+        "couranr_route_run_versions",
+        "couranr_route_run_stops",
+        "couranr_route_run_events",
+        "couranr_route_run_claims",
+        "couranr_delivery_requests"
+      ],
+      "affected_code_paths": [
+        "components/couranr/routes/**",
+        "app/(couranr)/app/business/routes/**",
+        "app/api/couranr/merchant/route-runs/**",
+        "lib/couranr/routeRuns/**",
+        "supabase/migrations/20260926043000_couranr_route_run_acceptance.sql"
+      ],
+      "conflict_with_current_code": {
+        "code_value": "RR-001 supports draft save/read only and intentionally returns bookingAvailable=false.",
+        "code_location": "Route Run RR-001 API, commands and draft-only database check",
+        "resolution": "Extend Route Run state to draft/accepted/abandoned, add immutable accepted-version metadata and an atomic claim table. Keep booking/execution hard-disabled.",
+        "remediation_commit": "RR-002 Route Builder and accepted contract"
+      },
+      "implementation_phase": "Route Run V1 — builder/accepted contract",
+      "acceptance_criteria": [
+        "A Business can build a 2–5 stop Route Run by entering one shared pickup and destination/package facts for each stop; each stop is created through the existing canonical one-destination delivery engine.",
+        "The builder never posts a delivery amount; child quotes are server-minted and the displayed Route total is only their sum.",
+        "Acceptance atomically revalidates and claims every child or claims none.",
+        "A child claimed by an accepted Route Run cannot be changed, re-quoted, submitted or deleted through ordinary single-delivery commands.",
+        "Accepted Route Runs create no payment obligation, plan, delivery, assignment, driver availability change, custody credential or proof.",
+        "Drafts can be archived idempotently and only active drafts count toward the draft quota.",
+        "Every Route child carries a server-derived protection level from its declared value and aggregate declared value cannot exceed 50000 cents.",
+        "The builder makes no separate route-optimization API call; only the existing per-child quote path performs provider routing.",
+        "V1 acceptance refuses any child above 50 lb and refuses mixed pickup timing across stops."
+      ],
+      "decided_by": "owner",
+      "decided_at_utc": "2026-09-26T08:03:00Z"
     },
     {
       "id": "FND-006",

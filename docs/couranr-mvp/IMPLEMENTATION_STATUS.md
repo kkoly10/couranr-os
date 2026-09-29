@@ -11,7 +11,7 @@ ledgers own per-item state; this is their sum.
 The 721-line hand-written version of this file is preserved whole at
 [`autonomous-evidence/status-archive/IMPLEMENTATION_STATUS-2026-08-06.md`](./autonomous-evidence/status-archive/IMPLEMENTATION_STATUS-2026-08-06.md).
 It restated per-row evidence the ledgers already carried, and the restatement is
-what went stale: it counted 39 migrations while 148 were on disk.
+what went stale: it counted 39 migrations while 149 were on disk.
 
 ## Where truth lives
 
@@ -37,11 +37,11 @@ proves every generated view matches its source.
 | `not_started` | 9 |
 | `complete_unverified` | 1 |
 
-## Screens — 68 rows against 68 canonical screens
+## Screens — 71 rows against 71 canonical screens
 
 | Status | Count |
 |---|---|
-| `functional_verified` | 29 |
+| `functional_verified` | 32 |
 | `functional_unverified` | 20 |
 | `partial` | 14 |
 | `placeholder_only` | 5 |
@@ -52,16 +52,16 @@ Still rendering `ScreenPlaceholder` (5): `OPS-006` · `OPS-017` · `OPS-018` · 
 
 | | count |
 |---|---|
-| Page routes | 102 |
-| …canonical, under `app/(couranr)` | 52 |
+| Page routes | 105 |
+| …canonical, under `app/(couranr)` | 55 |
 | …legacy | 50 |
-| API routes | 216 |
-| …canonical, under `app/api/couranr` | 146 |
+| API routes | 217 |
+| …canonical, under `app/api/couranr` | 147 |
 | …legacy | 70 |
-| Forward migrations | 148 |
-| Paired rollbacks | 148 |
-| Canonical screens | 68 |
-| …Core | 64 |
+| Forward migrations | 149 |
+| Paired rollbacks | 149 |
+| Canonical screens | 71 |
+| …Core | 67 |
 | …MVP-complete | 4 |
 
 ## Open work items
@@ -120,6 +120,7 @@ each is in the ledger row itself — `test_evidence`, `browser_verified` and
 | `14fa99fbcf8103d33bb7267a8f4729421bccd400` | 1 work item | P6-001 |
 | `1b3a1c90c88a554f1ac1ff1e6a6d06a97d602150` | 2 screens | CUS-006, CUS-008 |
 | `277982f2548e9b804c466121437c696b4ba52af4` | 1 screen | CUS-002 |
+| `29ba410f8c5b6c777835a5d1f2a192e7f5a9f632` | 3 screens | MER-017, MER-018, MER-019 |
 | `32893e21401a6f056821c4caaa7858460c7356b8` | 1 screen | MER-001 |
 | `38ec5f27190301b39320c05164f28449ffed9054` | 2 screens | OPS-013, OPS-014 |
 | `401b3eea5cd96bb09d224f3b113ba6091bba807d` | 18 work items, 24 screens | P0-001, P0-002, P1-001, P1-002, P1-003, P1-004, P2-002, P4-001, P5-002, P7-001, P7-002, P7-003, P8-003, P9-001, P9-002, P9-003, P9-004, P10-007, CUS-005, DRV-002, DRV-003, DRV-004, DRV-005, DRV-006, MER-002, MER-006, MER-007, OPS-002, OPS-004, OPS-006, OPS-008, OPS-011, OPS-015, OPS-016, OPS-017, OPS-018, OPS-019, OPS-020, OPS-021, PUB-002, PUB-003, PUB-005 |

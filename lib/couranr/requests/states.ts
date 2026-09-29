@@ -105,6 +105,7 @@ export const REQUEST_EVENT_COMMANDS = [
   "auto_plan_delivery_request",
   "apply_promotional_credit",
   "record_consumer_trust",
+  "record_business_declared_value",
   "record_recipient_adult_attestation",
   "issue_recipient_dropoff_code",
   "sender_cancellation_review_requested",

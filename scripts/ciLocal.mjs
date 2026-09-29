@@ -199,6 +199,7 @@ const STAGES = [
     ["test:foundation-backfill", "Foundation Gate A deterministic historical backfill matrix"],
     ["test:foundation-rollbacks", "Foundation Gate A reversible-additive and hard-refusal rollback matrix"],
     ["test:route-run-foundation", "RR-001 Business Route Run draft-only aggregate — tenancy, CAS, immutable revisions, rollback refusal and no canonical/payment mutation"],
+    ["test:route-run-acceptance", "RR-002 accepted Route Run — atomic child claims, quote approval, risk gates, races and no booking side effects"],
     ["test:problem-audience", "CUS-004 sender/recipient Help problem-report isolation — same-delivery private audiences and rollback refusal"],
     ["test:business-routing", "Business Places/Routes immutable-quote execution matrix"],
     ["test:messaging", "authenticated messaging"],
@@ -248,6 +249,7 @@ const STAGES = [
         "test:foundation-backfill",
         "test:foundation-rollbacks",
         "test:route-run-foundation",
+        "test:route-run-acceptance",
         "test:problem-audience",
         "test:business-routing",
         "test:consumer-place-ratelimit",
@@ -310,6 +312,28 @@ const STAGES = [
       return null;
     },
   })),
+  {
+    tier: 4,
+    name: "test:route-run-merchant",
+    run: ["npm", ["run", "test:route-run-merchant"]],
+    why: "RR-002 authenticated disposable browser — list, builder, accepted contract, viewer authority and clean process teardown",
+    settle: settleDisposablePorts,
+    assert: (out) => {
+      const m = out.match(/Route Run Merchant Browser: (\d+)\/(\d+) checks PASS\./);
+      if (!m || m[1] !== "17" || m[2] !== "17") {
+        return "RR-002 requires its complete 17/17 authenticated browser tally";
+      }
+      if (!out.includes("RR-002 cleanup: Next, gateway, PostgREST and PostgreSQL stopped; disposable build removed.")) {
+        return "RR-002 did not confirm clean process teardown";
+      }
+      return null;
+    },
+    needs: () => {
+      if (!want.browser) return "tier 4 not requested — pass --browser or --all";
+      if (!postgrestPresent()) return "postgrest binary is missing — run `npm run provision:postgrest` first";
+      return null;
+    },
+  },
   {
     tier: 4,
     name: "test:smart-intake-ui",

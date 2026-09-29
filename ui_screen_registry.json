@@ -626,6 +626,63 @@
       "constraints": "No monthly subscription invoice during pilot. Separate delivery charge from product sale."
     },
     {
+      "id": "MER-017",
+      "surface": "Merchant",
+      "name": "Route Runs list",
+      "routes": [
+        "/app/business/routes"
+      ],
+      "route_label": "/app/business/routes",
+      "tier": "Core",
+      "phase": "Route Run V1",
+      "viewport": "Desktop-first responsive",
+      "canonical_path": "Derived from MER-004 merchant list design system; no separate approved mock.",
+      "image": null,
+      "purpose": "Find Business Route Run drafts, accepted stop sets, and archived drafts without collapsing the child deliveries they group.",
+      "actions": "Create Route Run; open Route Run; review state and combined child-delivery estimates.",
+      "states": "Empty; draft; accepted; archived; error.",
+      "source": "RR-001 and RR-002 in the root decision registry; ROUTE_RUN_IMPLEMENTATION.md",
+      "constraints": "Business only. A Route Run groups separate canonical single-destination deliveries. Accepted does not mean paid, booked, assigned, picked up, or in transit. Never revive the retired $16.99/stop Route Saver price."
+    },
+    {
+      "id": "MER-018",
+      "surface": "Merchant",
+      "name": "Create Route Run",
+      "routes": [
+        "/app/business/routes/new"
+      ],
+      "route_label": "/app/business/routes/new",
+      "tier": "Core",
+      "phase": "Route Run V1",
+      "viewport": "Desktop-first responsive",
+      "canonical_path": "Derived from MER-005/MER-006 form and review design system; no separate approved mock.",
+      "image": null,
+      "purpose": "Enter one common pickup, create two to five canonical child delivery drafts, identify each package, calculate child delivery estimates, and accept one immutable stop set.",
+      "actions": "Choose common pickup; add/reorder/remove stops; enter recipient/package/value facts; calculate child estimates; save draft; accept stop set.",
+      "states": "Blank; validating; child preparation; draft review; stale child; acceptance failure; accepted.",
+      "source": "RR-001 and RR-002 in the root decision registry; ROUTE_RUN_IMPLEMENTATION.md",
+      "constraints": "V1 is merchant-paid only, 2–5 stops, one common pickup and one common pickup timing, no restricted items, child packages at most 50 lb, $500 aggregate declared-value ceiling, separate immutable child quotes, no automatic route discount, and no route optimization call from this builder. Acceptance claims children but does not book/pay/dispatch/create custody. Once any child draft is created during an attempt, shared facts and prepared stop facts stay locked so a retry cannot silently diverge from server state."
+    },
+    {
+      "id": "MER-019",
+      "surface": "Merchant",
+      "name": "Route Run detail",
+      "routes": [
+        "/app/business/routes/[id]"
+      ],
+      "route_label": "/app/business/routes/[id]",
+      "tier": "Core",
+      "phase": "Route Run V1",
+      "viewport": "Desktop-first responsive",
+      "canonical_path": "Derived from MER-007 merchant detail design system; no separate approved mock.",
+      "image": null,
+      "purpose": "Show one Route Run, its immutable stop order, child delivery links, reference estimate sum, stale/claim evidence, and the exact authority currently reached.",
+      "actions": "Accept draft; archive draft; open child delivery; return to Route Runs.",
+      "states": "Draft; stale draft; accepted; archived; error.",
+      "source": "RR-001 and RR-002 in the root decision registry; ROUTE_RUN_IMPLEMENTATION.md",
+      "constraints": "Do not imply accepted means booked or paid. Recipient/customer data remains child-scoped. No direct merchant dispatch, custody, refund, or arbitrary child-state mutation. Accepted children are frozen against standalone mutation until the later Route executor authority replaces that guard."
+    },
+    {
       "id": "DRV-001",
       "surface": "Driver",
       "name": "Driver dashboard",
