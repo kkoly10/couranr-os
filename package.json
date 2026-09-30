@@ -62,6 +62,7 @@
     "test:rr003-business-payment": "node e2e/disposable/businessPaymentMethod.mjs",
     "test:rr003-route-settlement": "node e2e/disposable/routeRunSettlement.mjs",
     "test:rr003-route-resource": "node e2e/disposable/routeRunResource.mjs",
+    "test:rr003-route-readiness": "node e2e/disposable/routeRunPickupReadiness.mjs",
     "test:problem-audience": "node e2e/disposable/customerProblemAudience.mjs",
     "test:credit-settlement": "node e2e/disposable/creditSettlement.mjs",
     "test:rollback-guards": "node e2e/disposable/rollbackGuards.mjs",
