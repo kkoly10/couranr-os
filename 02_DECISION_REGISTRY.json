@@ -3984,7 +3984,8 @@
           ],
           "standalone_child_mutation_after_acceptance": "blocked at database trigger until the Route executor authority replaces that guard"
         },
-        "draft_abandonment": "draft -> abandoned only; accepted cancellation is a later governed workflow",
+        "draft_abandonment": "draft -> abandoned only; archived draft history is retained",
+        "accepted_cancellation": "accepted -> cancelled only before any payment obligation, provider state, service plan, delivery, reservation, assignment, proof or custody authority exists. Atomically release active child claims while preserving immutable accepted version and acceptance/cancellation events. Cancelled is terminal, not archived, and removes Route-derived payer approval. No refund or provider action occurs.",
         "business_declared_value": "draft-only authenticated Business command; browser supplies integer cents, server derives protection level, database re-derives/enforces it"
       },
       "status": "decided",
@@ -4340,7 +4341,7 @@
         "clock": "server/database time; no browser timer participates",
         "applies_to": "a quote_status='estimated' quote under couranr-pricing-v2-2026-09-01",
         "what_the_window_gates": "only the ACT OF OBTAINING payer approval; never anything downstream of an approval already obtained",
-        "merchant_payer_approval": "Merchant self-service: p_acknowledged=true at submit, identifying THIS exact quote version. Operations-assisted Business entry: Operations approval is NOT payer approval; after Couranr confirms service, the merchant must authorize the exact quote through the existing payment path, and requires_capture becomes the payer-approval evidence.",
+        "merchant_payer_approval": "Merchant self-service: p_acknowledged=true at submit, identifying THIS exact quote version. Business Route Run: the merchant reviews every displayed child Quote Version and aggregate, then clicks Approve estimates and accept stops before each child quote expires. The immutable accepted Route version identifies those approved quote IDs; later time passage does not expire them while the Route remains accepted. Pre-execution cancellation removes Route-derived approval, so a child used later needs another valid payer-approval path or a fresh quote. Operations-assisted Business entry: Operations approval is NOT payer approval; after Couranr confirms service, the merchant must authorize the exact quote through the existing payment path, and requires_capture becomes the payer-approval evidence.",
         "customer_payer_approval": "the Stripe authorization reaching requires_capture for the exact obligation — the transition that makes the obligation 'authorized', moves the request to 'confirmed' and records record_payer_quote_approval.",
         "explicitly_not_approval": [
           "creating a payment obligation — it begins 'not_started'",
@@ -4357,6 +4358,7 @@
         ],
         "enforced_at": [
           "couranr_submit_delivery_request_v2 (only when p_acknowledged=true)",
+          "couranr_accept_route_run (exact displayed child Quote Versions before expiry; accepted version is immutable approval evidence)",
           "couranr_accept_delivery_request_as_quoted",
           "couranr_create_payment_obligation",
           "couranr_issue_payment_access_token",
@@ -4415,7 +4417,8 @@
         "remediation_commit": "Pricing V2 closure"
       },
       "implementation_phase": "Pricing V2 closure",
-      "note": "An earlier revision confused COMMAND AND ROW EXISTENCE with payer approval. It expired quotes a payer had already approved, and left the real customer approval boundary — couranr_apply_payment_intent_state — unguarded, so an obligation created while the quote was fresh made the price immortal. Approval is now DERIVED from the evidence that already exists rather than duplicated into a flag."
+      "note": "RR-002 narrowly amends merchant approval authority: accepted Route Run membership approves its exact child quote IDs only while that Route remains accepted; cancelled Route history is not current approval. Accepted still is not paid, authorized, booked, dispatched or custody. An earlier revision confused COMMAND AND ROW EXISTENCE with payer approval. Approval is DERIVED from immutable evidence rather than duplicated into a flag.",
+      "extended_by": ["RR-002"]
     },
     {
       "authority_file": "docs/couranr-mvp/PRODUCT_SPEC.md",

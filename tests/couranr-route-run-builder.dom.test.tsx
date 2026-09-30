@@ -79,6 +79,7 @@ function delivery(id: string, subtotal: number, input: Record<string, unknown>) 
     payerType: "merchant",
     singleDestinationContract: true,
     version: 1,
+    pickupManifestVersion: 0,
     currentQuoteVersionId: id,
     quote: { deliverySubtotalCents: subtotal },
   };
@@ -101,6 +102,7 @@ function routeDraft() {
     acceptedVersion: null,
     acceptedAt: null,
     abandonedAt: null,
+    cancelledAt: null,
     stops: [
       { sequence: 1, requestId: R1, quoteVersionId: R1, requestVersion: 2, pickupManifestVersion: 1, stale: false, claimed: false },
       { sequence: 2, requestId: R2, quoteVersionId: R2, requestVersion: 2, pickupManifestVersion: 1, stale: false, claimed: false },
@@ -307,6 +309,7 @@ describe("RR-002 RouteBuilder", () => {
     fetchDeliveryRequest.mockResolvedValue({ ok: true, value: { request: {
       ...delivery(R1, 1800, firstRequest),
       version: 2,
+      pickupManifestVersion: 1,
       businessAccountId: BIZ,
       requestState: "draft",
       payerType: "merchant",
@@ -329,6 +332,40 @@ describe("RR-002 RouteBuilder", () => {
     expect(saveBusinessPickupManifest).toHaveBeenCalledTimes(2);
     expect(recordBusinessDeclaredValue).toHaveBeenCalledTimes(2);
     expect(saveRouteRunDraft.mock.calls[0][0].requestIds).toEqual([R1, R2]);
+  });
+
+  it.each([2, 3])("refuses recovery when the server manifest generation is %i", async (serverManifestVersion) => {
+    createDeliveryRequest.mockReset()
+      .mockImplementationOnce(({ request }: { request: Record<string, unknown> }) =>
+        Promise.resolve({ ok: true, value: { request: delivery(R1, 1800, request) } }))
+      .mockResolvedValueOnce({ ok: false, status: 500, error: "Second stop failed." });
+    recordBusinessDeclaredValue.mockReset()
+      .mockResolvedValueOnce({ ok: true, value: { requestId: R1, version: 2, declaredValueCents: 10000, protectionLevel: "secure_pickup" } });
+    const user = userEvent.setup();
+    const page = render(<RouteBuilder />);
+    await fillTwoStops(user);
+    await user.click(screen.getByRole("button", { name: "Calculate delivery estimates" }));
+    await screen.findByText("Prepared details are locked");
+    const firstRequest = createDeliveryRequest.mock.calls[0][0].request;
+    const pending = JSON.parse(window.sessionStorage.getItem("couranr-route-builder-pending-v1") ?? "null");
+    expect(pending.stops[0].pickupManifestVersion).toBe(1);
+    page.unmount();
+    fetchDeliveryRequest.mockResolvedValue({ ok: true, value: { request: {
+      ...delivery(R1, 1800, firstRequest),
+      version: 2,
+      pickupManifestVersion: serverManifestVersion,
+      pickupAddress: firstRequest.pickupAddress,
+      dropoffAddress: firstRequest.dropoffAddress,
+      recipientEmail: firstRequest.recipientEmail,
+      recipientName: firstRequest.recipientName,
+    } } });
+    render(<RouteBuilder />);
+    await screen.findByText("Continue your unfinished Route Run?");
+    await user.click(screen.getByRole("button", { name: "Continue saved attempt" }));
+    expect(await screen.findByText(/package details changed since this attempt/i)).toBeTruthy();
+    expect(createDeliveryRequest).toHaveBeenCalledTimes(2);
+    expect(saveBusinessPickupManifest).toHaveBeenCalledTimes(1);
+    expect(saveRouteRunDraft).not.toHaveBeenCalled();
   });
 
   it("does not reveal a saved Route attempt to a different signed-in business", async () => {

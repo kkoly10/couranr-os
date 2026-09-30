@@ -11,10 +11,10 @@ import type { RouteRunView } from "@/lib/couranr/routeRuns/types";
 import { fetchRouteRuns } from "./client";
 
 const tone = (state: RouteRunView["state"]) =>
-  state === "accepted" ? "success" : state === "abandoned" ? "neutral" : "warning";
+  state === "accepted" ? "success" : state === "draft" ? "warning" : "neutral";
 
 const label = (state: RouteRunView["state"]) =>
-  state === "accepted" ? "Accepted" : state === "abandoned" ? "Archived" : "Draft";
+  state === "accepted" ? "Accepted" : state === "abandoned" ? "Archived" : state === "cancelled" ? "Cancelled" : "Draft";
 
 export function RouteRunsList() {
   const [accounts, setAccounts] = React.useState<BusinessAccountOption[] | null>(null);

@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Alert, Badge, Button, Card, CardHeader, Cluster, Stack, Text, buttonClassName } from "@/components/couranr/primitives";
 import { CardSkeleton, EmptyState, ErrorState, LoadingState } from "@/components/couranr/states";
+import { ConfirmDialog } from "@/components/couranr/interactive";
 import {
   fetchDeliveryRequest,
   fetchMyBusinessAccounts,
@@ -14,7 +15,7 @@ import {
 } from "@/components/couranr/requests/client";
 import { formatCents, type DeliveryRequestView } from "@/lib/couranr/requests/view";
 import type { RouteRunView } from "@/lib/couranr/routeRuns/types";
-import { abandonRouteRun, acceptRouteRun, fetchRouteRun, saveRouteRunDraft } from "./client";
+import { abandonRouteRun, acceptRouteRun, cancelAcceptedRouteRun, fetchRouteRun, saveRouteRunDraft } from "./client";
 
 const uuid = () => crypto.randomUUID();
 
@@ -49,9 +50,11 @@ export function RouteRunDetail({ routeRunId }: { routeRunId: string }) {
   const [route, setRoute] = React.useState<RouteRunView | null>(null);
   const [deliveries, setDeliveries] = React.useState<Map<string, DeliveryRequestView>>(new Map());
   const [error, setError] = React.useState<string | null>(null);
-  const [busy, setBusy] = React.useState<"accept" | "abandon" | "revise" | null>(null);
+  const [busy, setBusy] = React.useState<"accept" | "abandon" | "cancel" | "revise" | null>(null);
+  const [confirmCancel, setConfirmCancel] = React.useState(false);
   const acceptKey = React.useRef(uuid());
   const abandonKey = React.useRef(uuid());
+  const cancelKey = React.useRef(uuid());
 
   React.useEffect(() => {
     let cancelled = false;
@@ -91,8 +94,9 @@ export function RouteRunDetail({ routeRunId }: { routeRunId: string }) {
     return () => { cancelled = true; };
   }, [businessAccountId, routeRunId]);
 
-  async function act(kind: "accept" | "abandon") {
-    if (!route || busy || route.version !== route.currentVersion) return;
+  async function act(kind: "accept" | "abandon" | "cancel") {
+    if (!route || busy || route.version !== route.currentVersion ||
+      (kind === "cancel" && route.state !== "accepted")) return;
     const currentTotals = route.stops.map((stop) => deliveries.get(stop.requestId)?.quote.deliverySubtotalCents);
     if (kind === "accept" && (
       !route.stops.every((stop) => deliveries.get(stop.requestId)?.currentQuoteVersionId === stop.quoteVersionId) ||
@@ -109,11 +113,16 @@ export function RouteRunDetail({ routeRunId }: { routeRunId: string }) {
             expectedVersion: route.version,
             idempotencyKey: acceptKey.current,
           })
-        : await abandonRouteRun({
+        : kind === "abandon" ? await abandonRouteRun({
             businessAccountId,
             routeRunId,
             expectedVersion: route.version,
             idempotencyKey: abandonKey.current,
+          }) : await cancelAcceptedRouteRun({
+            businessAccountId,
+            routeRunId,
+            expectedVersion: route.acceptedVersion ?? route.version,
+            idempotencyKey: cancelKey.current,
           });
     setBusy(null);
     if (isApiFailure(result)) {
@@ -121,6 +130,7 @@ export function RouteRunDetail({ routeRunId }: { routeRunId: string }) {
       return;
     }
     setRoute(result.value.routeRun);
+    setConfirmCancel(false);
     router.refresh();
   }
 
@@ -170,12 +180,22 @@ export function RouteRunDetail({ routeRunId }: { routeRunId: string }) {
     route.stops.reduce((sum, stop) => sum + (deliveries.get(stop.requestId)?.quote.deliverySubtotalCents ?? 0), 0) === route.referenceQuoteTotalCents;
   const activeAccount = accounts.find((account) => account.businessAccountId === businessAccountId);
   const mayWrite = !!activeAccount && ["owner", "manager", "dispatcher"].includes(activeAccount.role);
-  const stateLabel = route.state === "accepted" ? "Accepted" : route.state === "abandoned" ? "Archived" : "Draft";
+  const stateLabel = route.state === "accepted" ? "Accepted" : route.state === "abandoned" ? "Archived" : route.state === "cancelled" ? "Cancelled" : "Draft";
   const stateTone = route.state === "accepted" ? "success" : route.state === "draft" ? "warning" : "neutral";
 
   return (
     <Stack gap={6}>
       {error ? <ErrorState title="That Route Run action could not be completed" body={error} /> : null}
+      <ConfirmDialog
+        open={confirmCancel}
+        onClose={() => setConfirmCancel(false)}
+        onConfirm={() => void act("cancel")}
+        title="Cancel accepted Route Run?"
+        consequence="If payment and delivery execution have not begun, this releases the stops back to separate delivery drafts and removes Route-derived approval of their estimates. Otherwise Couranr will refuse this action and Operations must review it."
+        confirmLabel="Cancel accepted Route Run"
+        destructive
+        loading={busy === "cancel"}
+      />
 
       <Card>
         <CardHeader
@@ -203,7 +223,17 @@ export function RouteRunDetail({ routeRunId }: { routeRunId: string }) {
           ) : null}
           {route.state === "accepted" ? (
             <Alert tone="info" title="Stop set frozen">
-              These child deliveries are now claimed by this Route Run and cannot be submitted or changed independently. Payment, booking, driver reservation and pickup have not started.
+              These child deliveries are now claimed by this Route Run and cannot be submitted or changed independently. Acceptance alone does not start payment, booking, driver reservation or pickup.
+            </Alert>
+          ) : null}
+          {route.state === "accepted" && mayWrite ? (
+            <Button variant="secondary" disabled={busy !== null} onClick={() => setConfirmCancel(true)}>
+              Cancel accepted Route Run
+            </Button>
+          ) : null}
+          {route.state === "cancelled" ? (
+            <Alert tone="info" title="Route cancelled">
+              The accepted stop set remains in history. Its children were released as separate delivery drafts; any later changes are independent. Their prior Route-derived estimate approval no longer applies.
             </Alert>
           ) : null}
           {route.state === "abandoned" ? (

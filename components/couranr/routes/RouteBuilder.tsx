@@ -45,6 +45,7 @@ type StopDraft = {
   proofMethod: "photo_or_pin" | "signature";
   request: DeliveryRequestView | null;
   manifestSaved: boolean;
+  pickupManifestVersion: number | null;
   valueSaved: boolean;
   currentRequestVersion: number | null;
 };
@@ -101,13 +102,17 @@ function readPendingAttempt(): PendingAttempt | null {
         typeof stop.handlingNotes === "string" && ["photo_or_pin", "signature"].includes(String(stop.proofMethod)) &&
         (stop.requestId === null || typeof stop.requestId === "string") &&
         typeof stop.manifestSaved === "boolean" && typeof stop.valueSaved === "boolean" &&
+        (stop.pickupManifestVersion === undefined || stop.pickupManifestVersion === null ||
+          (Number.isSafeInteger(stop.pickupManifestVersion) && Number(stop.pickupManifestVersion) >= 0)) &&
         (stop.currentRequestVersion === null || Number.isSafeInteger(stop.currentRequestVersion))
       )
     ) {
       window.sessionStorage.removeItem(pendingKey);
       return null;
     }
-    return value as PendingAttempt;
+    return { ...value, stops: value.stops.map((stop: PendingStop) => ({
+      ...stop, pickupManifestVersion: stop.pickupManifestVersion ?? null,
+    })) } as PendingAttempt;
   } catch {
     return null;
   }
@@ -156,6 +161,7 @@ function newStop(): StopDraft {
     proofMethod: "photo_or_pin",
     request: null,
     manifestSaved: false,
+    pickupManifestVersion: null,
     valueSaved: false,
     currentRequestVersion: null,
   };
@@ -304,8 +310,10 @@ export function RouteBuilder() {
           !preparedRequestMatches(request, candidate.businessAccountId, candidate.pickup,
             { ...stop, request: null }, candidate.timingIntent, candidate.requestedPickupLocal) ||
           (stop.valueSaved && request.version !== stop.currentRequestVersion)
+          || (stop.manifestSaved && (stop.pickupManifestVersion === null ||
+            request.pickupManifestVersion !== stop.pickupManifestVersion))
         ) {
-          setError("A prepared delivery changed since this attempt was saved. Open the existing delivery and start a new Route Run; Couranr will not silently create a replacement.");
+          setError("The prepared delivery or package details changed since this attempt was saved. Open the existing delivery and rebuild the Route Run; Couranr will not overwrite a newer manifest or create a replacement.");
           setBusy(null);
           return;
         }
@@ -452,7 +460,10 @@ export function RouteBuilder() {
             },
           });
           if (isApiFailure(manifest)) throw new Error(`Stop ${index + 1}: ${withReference(manifest)}`);
-          working[index] = { ...working[index], manifestSaved: true };
+          working[index] = {
+            ...working[index], manifestSaved: true,
+            pickupManifestVersion: manifest.value.pickupManifest.manifestVersion,
+          };
           persistAttempt(working, false);
           setStops(working.map((s) => ({ ...s })));
         }

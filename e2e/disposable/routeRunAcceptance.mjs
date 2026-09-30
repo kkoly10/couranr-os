@@ -21,6 +21,10 @@ import { psqlTransport, seedCanonicalQuotedRequest } from "./gateAFixtures.mjs";
 const ROOT = fileURLToPath(new URL("../../", import.meta.url));
 const migration = readFileSync(resolve(ROOT, "supabase/migrations/20260926043000_couranr_route_run_acceptance.sql"), "utf8");
 const rollback = readFileSync(resolve(ROOT, "supabase/rollbacks/20260926043000_couranr_route_run_acceptance.rollback.sql"), "utf8");
+const cancelMigration = readFileSync(resolve(ROOT, "supabase/migrations/20260930023308_couranr_route_run_preexecution_cancellation.sql"), "utf8");
+const cancelRollback = readFileSync(resolve(ROOT, "supabase/rollbacks/20260930023308_couranr_route_run_preexecution_cancellation.rollback.sql"), "utf8");
+const indexMigration = readFileSync(resolve(ROOT, "supabase/migrations/20260930023313_couranr_route_run_claim_fk_index.sql"), "utf8");
+const indexRollback = readFileSync(resolve(ROOT, "supabase/rollbacks/20260930023313_couranr_route_run_claim_fk_index.rollback.sql"), "utf8");
 const one = (sql) => psql(sql).trim();
 const q = (s) => `'${String(s).replaceAll("'", "''")}'`;
 let checks = 0;
@@ -45,6 +49,18 @@ function routeAccept({ business, actor, route, version = 1, key }) {
 function routeAbandon({ business, actor, route, version = 1, key }) {
   return `select public.couranr_abandon_route_run_draft('${business}','${actor}','${route}',${version},'${key}')`;
 }
+function routeCancel({ business, actor, route, version = 1, key }) {
+  return `select public.couranr_cancel_accepted_route_run('${business}','${actor}','${route}',${version},'${key}')`;
+}
+function obligationInsert(requestId, marker) {
+  return `insert into public.couranr_payment_obligations
+    (request_id,business_account_id,payer_type,request_version,pricing_policy_version,
+      amount_cents,idempotency_key,quote_version_id)
+    select r.id,r.business_account_id,r.payer_type,r.version,q.pricing_policy_version,
+      q.subtotal_cents,${q(marker)},q.id
+    from public.couranr_delivery_requests r join public.couranr_quote_versions q
+      on q.id=r.current_quote_version_id where r.id='${requestId}'`;
+}
 function parallel(sql) {
   return new Promise((resolveResult) => {
     const proc = spawn(`${process.env.COURANR_PGBIN || "/usr/lib/postgresql/16/bin"}/psql`, [
@@ -65,16 +81,23 @@ try {
   console.log(`RR-002 acceptance: ${info.migrationsApplied} migrations applied`);
 
   // Paired rollback must actually restore RR-001 when RR-002 has no semantic use.
+  one(indexRollback);
+  one(cancelRollback);
   one(rollback);
   check("empty RR-002 rollback removes claim table", one("select to_regclass('public.couranr_route_run_claims') is null"), "t");
   check("empty RR-002 rollback restores draft-only state check",
     one("select pg_get_constraintdef(oid) like '%route_state = ''draft''%' from pg_constraint where conname='couranr_route_runs_route_state_check'"), "t");
   one(migration);
+  one(cancelMigration);
+  one(indexMigration);
   check("RR-002 forward replay restores claims", one("select to_regclass('public.couranr_route_run_claims') is not null"), "t");
+  check("claim FK has covering composite index", one(`select count(*) from pg_indexes where schemaname='public' and indexname='couranr_rrc_route_version_idx' and indexdef like '%(route_run_id, route_version_id)%'`), "1");
 
   const biz = one("insert into public.business_accounts(name,status) values('RR002 business','active') returning id");
   const owner = one("insert into auth.users(email) values('rr002-owner@example.test') returning id");
   one(`insert into public.business_members(business_account_id,user_id,role,status) values('${biz}','${owner}','owner','active')`);
+  const viewer = one("insert into auth.users(email) values('rr002-viewer@example.test') returning id");
+  one(`insert into public.business_members(business_account_id,user_id,role,status) values('${biz}','${viewer}','viewer','active')`);
   const transport = psqlTransport(psql);
 
   async function child({
@@ -318,6 +341,128 @@ try {
       submitRace.some((x) => x.error.includes("route_child_stale")), true);
   }
 
+  const cancelA = await child({ marker: "cancel-a" });
+  const cancelB = await child({ marker: "cancel-b" });
+  const cancelRoute = randomUUID(), cancelKey = randomUUID();
+  one(routeSave({ business: biz, actor: owner, route: cancelRoute, children: [cancelA.requestId, cancelB.requestId] }));
+  one(routeAccept({ business: biz, actor: owner, route: cancelRoute, key: randomUUID() }));
+  check("Route acceptance explicitly approves the exact child quote",
+    one(`select private.couranr_quote_payer_approved(q) from public.couranr_quote_versions q where q.id='${cancelA.quoteVersionId}'`), "t");
+  const cancelled = JSON.parse(one(routeCancel({ business: biz, actor: owner, route: cancelRoute, key: cancelKey })));
+  check("clean accepted Route cancels", [cancelled.state, cancelled.acceptedVersion, cancelled.stops.map((s) => s.claimed)],
+    ["cancelled", 1, [false, false]]);
+  check("cancellation releases exactly the accepted claims",
+    one(`select count(*) from public.couranr_route_run_claims where route_run_id='${cancelRoute}'`), "0");
+  check("cancellation preserves accepted and cancelled timestamps",
+    one(`select accepted_at is not null and cancelled_at is not null from public.couranr_route_runs where id='${cancelRoute}'`), "t");
+  check("cancellation appends history without changing accepted version",
+    one(`select string_agg(command,',' order by created_at,id) from public.couranr_route_run_events where route_run_id='${cancelRoute}'`),
+    "create_route_draft,accept_route_run,cancel_accepted_route");
+  check("cancellation removes Route-derived payer approval",
+    one(`select private.couranr_quote_payer_approved(q) from public.couranr_quote_versions q where q.id='${cancelA.quoteVersionId}'`), "f");
+  check("old child quote can expire after cancelled Route",
+    one(`select private.couranr_quote_version_is_expired(q,now()+interval '1 day') from public.couranr_quote_versions q where q.id='${cancelA.quoteVersionId}'`), "t");
+  check("cancel replay returns the same result",
+    JSON.parse(one(routeCancel({ business: biz, actor: owner, route: cancelRoute, key: cancelKey }))).state, "cancelled");
+  refuses("second cancellation key conflicts",
+    routeCancel({ business: biz, actor: owner, route: cancelRoute, key: randomUUID() }), "route_already_cancelled");
+  refuses("cancelled Route cannot be accepted again",
+    routeAccept({ business: biz, actor: owner, route: cancelRoute, key: randomUUID() }), "route_not_editable");
+  check("cancelled child can be edited independently",
+    one(`update public.couranr_delivery_requests set readiness_state='ready' where id='${cancelA.requestId}' returning readiness_state`), "ready");
+  check("cancelled child remains a canonical draft",
+    one(`select request_state from public.couranr_delivery_requests where id='${cancelA.requestId}'`), "draft");
+  refuses("released Route quote cannot seed a draft payment obligation",
+    obligationInsert(cancelB.requestId, "cancelled-route-illicit-obligation"), "route_child_quote_approval_released");
+  check("cancellation creates no obligations, plans, deliveries or assignments",
+    one(`select (select count(*) from public.couranr_payment_obligations)::text||','||
+      (select count(*) from public.couranr_service_plans)::text||','||
+      (select count(*) from public.couranr_deliveries)::text||','||
+      (select count(*) from public.couranr_delivery_assignments)::text`), "0,0,0,0");
+
+  const payA = await child({ marker: "payment-block-a" });
+  const payB = await child({ marker: "payment-block-b" });
+  const payRoute = randomUUID();
+  one(routeSave({ business: biz, actor: owner, route: payRoute, children: [payA.requestId, payB.requestId] }));
+  one(routeAccept({ business: biz, actor: owner, route: payRoute, key: randomUUID() }));
+  one(obligationInsert(payA.requestId, "rr002-downstream-fixture"));
+  refuses("payment obligation refuses pre-execution release",
+    routeCancel({ business: biz, actor: owner, route: payRoute, key: randomUUID() }), "route_cancel_downstream_started");
+  check("refused release is atomic and retains both claims",
+    one(`select count(*) from public.couranr_route_run_claims where route_run_id='${payRoute}'`), "2");
+  check("refused release appends no cancellation event",
+    one(`select count(*) from public.couranr_route_run_events where route_run_id='${payRoute}' and command='cancel_accepted_route'`), "0");
+  refuses("viewer cannot cancel accepted Route",
+    routeCancel({ business: biz, actor: viewer, route: payRoute, key: randomUUID() }), "route_business_access_denied");
+  refuses("authenticated cannot execute cancellation directly",
+    `set role authenticated; ${routeCancel({ business: biz, actor: owner, route: payRoute, key: randomUUID() })}`,
+    "permission denied");
+  refuses("semantic cancellation rollback preserves historical Route",
+    cancelRollback, "route_cancellation_rollback_refuses_semantic_history");
+
+  const raceCancelA = await child({ marker: "cancel-race-a" });
+  const raceCancelB = await child({ marker: "cancel-race-b" });
+  const raceCancelRoute = randomUUID();
+  one(routeSave({ business: biz, actor: owner, route: raceCancelRoute,
+    children: [raceCancelA.requestId, raceCancelB.requestId] }));
+  one(routeAccept({ business: biz, actor: owner, route: raceCancelRoute, key: randomUUID() }));
+  const cancellationRace = await Promise.all([
+    parallel(routeCancel({ business: biz, actor: owner, route: raceCancelRoute, key: randomUUID() })),
+    parallel(routeCancel({ business: biz, actor: owner, route: raceCancelRoute, key: randomUUID() })),
+  ]);
+  check("two concurrent different-key cancellations have one winner",
+    cancellationRace.filter((x) => x.code === 0).length, 1);
+  check("losing concurrent cancellation is a stable conflict",
+    cancellationRace.some((x) => x.error.includes("route_already_cancelled")), true);
+  check("concurrent cancellation releases all claims once",
+    one(`select count(*) from public.couranr_route_run_claims where route_run_id='${raceCancelRoute}'`), "0");
+  check("concurrent cancellation appends exactly one event",
+    one(`select count(*) from public.couranr_route_run_events where route_run_id='${raceCancelRoute}' and command='cancel_accepted_route'`), "1");
+
+  const expiredA = await child({ marker: "expired-approval-a" });
+  const expiredB = await child({ marker: "expired-approval-b" });
+  const expiredRoute = randomUUID();
+  one(routeSave({ business: biz, actor: owner, route: expiredRoute,
+    children: [expiredA.requestId, expiredB.requestId] }));
+  // Fixture-only clock shift: no production or runtime role can rewrite an
+  // immutable quote. Replica mode is scoped to this single psql connection.
+  one(`set session_replication_role=replica;
+    update public.couranr_quote_versions set created_at=now()-interval '16 minutes'
+      where id='${expiredA.quoteVersionId}';
+    set session_replication_role=origin;`);
+  refuses("expired unaccepted Route quote cannot become payer approval",
+    routeAccept({ business: biz, actor: owner, route: expiredRoute, key: randomUUID() }),
+    "route_child_quote_expired");
+  check("expired refusal creates no obligation or child claim",
+    one(`select (select count(*) from public.couranr_route_run_claims where route_run_id='${expiredRoute}')::text||','||
+      (select count(*) from public.couranr_payment_obligations where request_id='${expiredA.requestId}')::text`),
+    "0,0");
+
+  const artifactRaceA = await child({ marker: "artifact-race-a" });
+  const artifactRaceB = await child({ marker: "artifact-race-b" });
+  const artifactRaceRoute = randomUUID();
+  one(routeSave({ business: biz, actor: owner, route: artifactRaceRoute,
+    children: [artifactRaceA.requestId, artifactRaceB.requestId] }));
+  one(routeAccept({ business: biz, actor: owner, route: artifactRaceRoute, key: randomUUID() }));
+  const artifactRace = await Promise.all([
+    parallel(routeCancel({ business: biz, actor: owner, route: artifactRaceRoute, key: randomUUID() })),
+    parallel(obligationInsert(artifactRaceA.requestId, "cancel-artifact-race")),
+  ]);
+  check("cancellation and first Route payment artifact cannot both win",
+    artifactRace.filter((x) => x.code === 0).length, 1);
+  const artifactRaceState = one(`select route_state from public.couranr_route_runs where id='${artifactRaceRoute}'`);
+  if (artifactRaceState === "cancelled") {
+    check("cancel-winning race leaves no payment artifact",
+      one(`select count(*) from public.couranr_payment_obligations where request_id='${artifactRaceA.requestId}'`), "0");
+    check("late payment entry observes released approval",
+      artifactRace.some((x) => x.error.includes("route_child_quote_approval_released")), true);
+  } else {
+    check("payment-winning race keeps both claims",
+      one(`select count(*) from public.couranr_route_run_claims where route_run_id='${artifactRaceRoute}'`), "2");
+    check("late cancellation observes downstream authority",
+      artifactRace.some((x) => x.error.includes("route_cancel_downstream_started")), true);
+  }
+
   check("claim table has RLS enabled",
     one("select relrowsecurity from pg_class where oid='public.couranr_route_run_claims'::regclass"), "t");
   refuses("anon cannot read accepted Route claims",
@@ -329,6 +474,8 @@ try {
   const listed = JSON.parse(one(`select public.couranr_list_route_runs('${biz}','${owner}')`));
   check("Route list includes accepted route", listed.some((x) => x.routeRunId === acceptedRoute && x.state === "accepted"), true);
   check("Route list includes archived route", listed.some((x) => x.routeRunId === archiveRoute && x.state === "abandoned"), true);
+  check("Route list distinguishes cancelled from archived",
+    listed.some((x) => x.routeRunId === cancelRoute && x.state === "cancelled"), true);
 
   refuses("RR-002 rollback refuses after accepted/archive/value semantic history",
     rollback, "route_run_acceptance_rollback_refuses_semantic_use");

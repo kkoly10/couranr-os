@@ -43,6 +43,11 @@ const REFUSALS: Record<string, { code: PublicErrorCode; message: string }> = {
   route_already_abandoned: { code: "conflict", message: "This route has already been archived." },
   route_accept_input_invalid: { code: "invalid_input", message: "The route acceptance request is invalid." },
   route_abandon_input_invalid: { code: "invalid_input", message: "The route archive request is invalid." },
+  route_cancel_input_invalid: { code: "invalid_input", message: "The Route Run cancellation request is invalid." },
+  route_already_cancelled: { code: "conflict", message: "This Route Run was already cancelled under another request." },
+  route_not_accepted: { code: "conflict", message: "Only an accepted Route Run can be released." },
+  route_cancel_downstream_started: { code: "conflict", message: "Payment or delivery execution has started. Contact Couranr Operations for a governed cancellation." },
+  route_cancel_invariant: { code: "conflict", message: "The Route Run could not be safely released. Contact Couranr Operations." },
 };
 
 function failure(operation: string, reason?: unknown): CommandFailure {
@@ -62,7 +67,8 @@ const record = (v: unknown): v is Record<string, unknown> => !!v && typeof v ===
 const integer = (v: unknown, min: number, max = 2147483647): v is number =>
   typeof v === "number" && Number.isSafeInteger(v) && v >= min && v <= max;
 const nullableString = (v: unknown): v is string | null => v === null || typeof v === "string";
-const state = (v: unknown): v is RouteRunState => v === "draft" || v === "accepted" || v === "abandoned";
+const state = (v: unknown): v is RouteRunState =>
+  v === "draft" || v === "accepted" || v === "abandoned" || v === "cancelled";
 /** Explicit safe response projection. Extra RPC fields never reach a browser. */
 export function decodeRouteDraft(value: unknown): RouteRunView | null {
   if (
@@ -83,6 +89,7 @@ export function decodeRouteDraft(value: unknown): RouteRunView | null {
     value.quoteBasis !== "independent_delivery_quotes_not_a_route_offer" ||
     !nullableString(value.acceptedAt) ||
     !nullableString(value.abandonedAt) ||
+    !nullableString(value.cancelledAt) ||
     !Array.isArray(value.stops) ||
     value.stops.length !== value.stopCount
   ) {
@@ -91,9 +98,10 @@ export function decodeRouteDraft(value: unknown): RouteRunView | null {
   const acceptedVersion =
     value.acceptedVersion === null ? null : integer(value.acceptedVersion, 1) ? value.acceptedVersion : undefined;
   if (acceptedVersion === undefined) return null;
-  if (value.state === "draft" && (value.draftOnly !== true || acceptedVersion !== null || value.acceptedAt !== null || value.abandonedAt !== null)) return null;
-  if (value.state === "accepted" && (value.draftOnly !== false || acceptedVersion === null || value.acceptedAt === null || value.abandonedAt !== null)) return null;
-  if (value.state === "abandoned" && (value.draftOnly !== false || acceptedVersion !== null || value.acceptedAt !== null || value.abandonedAt === null)) return null;
+  if (value.state === "draft" && (value.draftOnly !== true || acceptedVersion !== null || value.acceptedAt !== null || value.abandonedAt !== null || value.cancelledAt !== null)) return null;
+  if (value.state === "accepted" && (value.draftOnly !== false || acceptedVersion === null || value.acceptedAt === null || value.abandonedAt !== null || value.cancelledAt !== null)) return null;
+  if (value.state === "abandoned" && (value.draftOnly !== false || acceptedVersion !== null || value.acceptedAt !== null || value.abandonedAt === null || value.cancelledAt !== null)) return null;
+  if (value.state === "cancelled" && (value.draftOnly !== false || acceptedVersion === null || value.acceptedAt === null || value.abandonedAt !== null || value.cancelledAt === null)) return null;
 
   const stops: RouteRunView["stops"] = [];
   for (const [index, stop] of value.stops.entries()) {
@@ -121,6 +129,7 @@ export function decodeRouteDraft(value: unknown): RouteRunView | null {
   }
   if (new Set(stops.map((s) => s.requestId.toLowerCase())).size !== stops.length) return null;
   if (value.state === "accepted" && stops.some((s) => !s.claimed)) return null;
+  if (value.state === "cancelled" && stops.some((s) => s.claimed)) return null;
 
   return {
     routeRunId: value.routeRunId,
@@ -138,6 +147,7 @@ export function decodeRouteDraft(value: unknown): RouteRunView | null {
     acceptedVersion,
     acceptedAt: value.acceptedAt,
     abandonedAt: value.abandonedAt,
+    cancelledAt: value.cancelledAt,
     stops,
   };
 }
@@ -226,6 +236,26 @@ export function abandonRouteRun(params: {
 }) {
   return runRouteCommand(
     "couranr_abandon_route_run_draft",
+    {
+      p_business_account_id: params.businessAccountId.toLowerCase(),
+      p_actor_user_id: params.actorUserId,
+      p_route_run_id: params.routeRunId.toLowerCase(),
+      p_expected_version: params.expectedVersion,
+      p_idempotency_key: params.idempotencyKey.toLowerCase(),
+    },
+    params.routeRunId,
+    params.businessAccountId,
+  );
+}
+export function cancelAcceptedRouteRun(params: {
+  businessAccountId: string;
+  actorUserId: string;
+  routeRunId: string;
+  expectedVersion: number;
+  idempotencyKey: string;
+}) {
+  return runRouteCommand(
+    "couranr_cancel_accepted_route_run",
     {
       p_business_account_id: params.businessAccountId.toLowerCase(),
       p_actor_user_id: params.actorUserId,

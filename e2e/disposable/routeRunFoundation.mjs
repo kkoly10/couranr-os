@@ -23,11 +23,17 @@ const migration = readFileSync(resolve(ROOT, "supabase/migrations/20260923200000
 const rollback = readFileSync(resolve(ROOT, "supabase/rollbacks/20260923200000_couranr_route_run_draft_foundation.rollback.sql"), "utf8");
 const acceptanceMigration = readFileSync(resolve(ROOT, "supabase/migrations/20260926043000_couranr_route_run_acceptance.sql"), "utf8");
 const acceptanceRollback = readFileSync(resolve(ROOT, "supabase/rollbacks/20260926043000_couranr_route_run_acceptance.rollback.sql"), "utf8");
+const cancelMigration = readFileSync(resolve(ROOT, "supabase/migrations/20260930023308_couranr_route_run_preexecution_cancellation.sql"), "utf8");
+const cancelRollback = readFileSync(resolve(ROOT, "supabase/rollbacks/20260930023308_couranr_route_run_preexecution_cancellation.rollback.sql"), "utf8");
+const indexMigration = readFileSync(resolve(ROOT, "supabase/migrations/20260930023313_couranr_route_run_claim_fk_index.sql"), "utf8");
+const indexRollback = readFileSync(resolve(ROOT, "supabase/rollbacks/20260930023313_couranr_route_run_claim_fk_index.rollback.sql"), "utf8");
 try {
   up({ quiet: true });
   check("all migrations replay with the route foundation", one("select to_regclass('public.couranr_route_runs') is not null"), "t");
   // RR-002 extends RR-001. Remove the empty extension before probing the RR-001
   // rollback itself, then put both layers back.
+  one(indexRollback);
+  one(cancelRollback);
   one(acceptanceRollback);
   check(
     "Route Run foreign-key hardening indexes are present",
@@ -41,6 +47,8 @@ try {
   check("empty rollback removes only the route substrate", one("select to_regclass('public.couranr_route_runs') is null and to_regclass('public.couranr_deliveries') is not null"), "t");
   one(migration);
   one(acceptanceMigration);
+  one(cancelMigration);
+  one(indexMigration);
   check("forward replay after rollback", one("select to_regclass('public.couranr_route_run_stops') is not null"), "t");
 
   const biz = one("insert into public.business_accounts(name,status) values('Route fixture','active') returning id");

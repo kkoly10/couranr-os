@@ -237,7 +237,7 @@ async function main() {
     check("B13", "browser acceptance atomically claims both child deliveries",
       sql(`select count(*) from public.couranr_route_run_claims where route_run_id='${routeId}'`) === "2");
     check("B14", "accepted UI does not claim booking/payment started",
-      (await ownerPage.locator("body").innerText()).includes("Payment, booking, driver reservation and pickup have not started"));
+      (await ownerPage.locator("body").innerText()).includes("Acceptance alone does not start payment, booking, driver reservation or pickup"));
     await ownerPage.screenshot({ path: path.join(SHOTS, "B-detail-accepted.png"), fullPage: true });
 
     const viewerPage = await signIn("rr002-browser-viewer@couranr.invalid", { width: 390, height: 844 });
@@ -251,6 +251,23 @@ async function main() {
     check("B17", "mobile Route detail has no horizontal overflow",
       await viewerPage.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth));
     await viewerPage.screenshot({ path: path.join(SHOTS, "B-detail-mobile.png"), fullPage: true });
+    check("B18", "viewer cannot cancel accepted Route",
+      await viewerPage.getByRole("button", { name: "Cancel accepted Route Run" }).count() === 0);
+    await ownerPage.getByRole("button", { name: "Cancel accepted Route Run" }).click();
+    check("B19", "owner sees release and no-payment consequence before cancellation",
+      await ownerPage.getByRole("dialog").getByText(/releases the stops back to separate delivery drafts/i).isVisible());
+    await ownerPage.getByRole("dialog").getByRole("button", { name: "Cancel accepted Route Run" }).click();
+    await ownerPage.getByText("Route cancelled", { exact: true }).waitFor({ state: "visible" });
+    check("B20", "browser cancellation preserves accepted Route history",
+      sql(`select route_state||','||(accepted_at is not null)::text||','||(cancelled_at is not null)::text from public.couranr_route_runs where id='${routeId}'`) === "cancelled,true,true");
+    check("B21", "browser cancellation releases both child claims",
+      sql(`select count(*) from public.couranr_route_run_claims where route_run_id='${routeId}'`) === "0");
+    await viewerPage.reload({ waitUntil: "domcontentloaded" });
+    await viewerPage.getByText("Route cancelled", { exact: true }).waitFor({ state: "visible", timeout: 30_000 });
+    check("B22", "viewer sees Cancelled distinctly from Archived",
+      await viewerPage.getByText("Route cancelled", { exact: true }).isVisible() &&
+      await viewerPage.getByText("Cancelled", { exact: true }).isVisible());
+    await ownerPage.screenshot({ path: path.join(SHOTS, "B-detail-cancelled.png"), fullPage: true });
 
     console.log(`Route Run Merchant Browser: ${passed}/${passed + failed} checks PASS.`);
     if (failed) process.exitCode = 1;

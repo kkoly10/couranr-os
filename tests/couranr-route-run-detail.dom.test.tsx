@@ -1,5 +1,5 @@
 import * as React from "react";
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -8,6 +8,7 @@ const fetchDeliveryRequest = vi.fn();
 const fetchRouteRun = vi.fn();
 const saveRouteRunDraft = vi.fn();
 const acceptRouteRun = vi.fn();
+const cancelAcceptedRouteRun = vi.fn();
 
 vi.mock("next/navigation", () => ({
   useRouter: () => ({ push: vi.fn(), refresh: vi.fn() }),
@@ -23,6 +24,7 @@ vi.mock("@/components/couranr/routes/client", () => ({
   fetchRouteRun: (...args: unknown[]) => fetchRouteRun(...args),
   saveRouteRunDraft: (...args: unknown[]) => saveRouteRunDraft(...args),
   acceptRouteRun: (...args: unknown[]) => acceptRouteRun(...args),
+  cancelAcceptedRouteRun: (...args: unknown[]) => cancelAcceptedRouteRun(...args),
 }));
 
 const { RouteRunDetail } = await import("@/components/couranr/routes/RouteRunDetail");
@@ -108,5 +110,40 @@ describe("RR-002 RouteRunDetail", () => {
     await screen.findByText("Review the current estimates");
     expect(screen.getByRole("button", { name: "Approve estimates and accept stops" })).toHaveProperty("disabled", true);
     await waitFor(() => expect(acceptRouteRun).not.toHaveBeenCalled());
+  });
+
+  it("requires consequence confirmation before owner cancellation", async () => {
+    fetchRouteRun.mockResolvedValue({ ok: true, value: { routeRun: {
+      ...route(1, Q2, 4000), state: "accepted", acceptedVersion: 1,
+      stops: route(1, Q2, 4000).stops.map((stop) => ({ ...stop, claimed: true })),
+    } } });
+    cancelAcceptedRouteRun.mockResolvedValue({ ok: true, value: { routeRun: {
+      ...route(1, Q2, 4000), state: "cancelled", acceptedVersion: 1,
+      stops: route(1, Q2, 4000).stops,
+    } } });
+    const user = userEvent.setup();
+    render(<RouteRunDetail routeRunId={ROUTE} />);
+    await screen.findByText("Stop set frozen");
+    const buttons = screen.getAllByRole("button", { name: "Cancel accepted Route Run" });
+    await user.click(buttons[0]);
+    expect(screen.getByText(/releases the stops back to separate delivery drafts/i)).toBeTruthy();
+    expect(cancelAcceptedRouteRun).not.toHaveBeenCalled();
+    await user.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Cancel accepted Route Run" }));
+    await waitFor(() => expect(cancelAcceptedRouteRun).toHaveBeenCalledTimes(1));
+    expect(cancelAcceptedRouteRun.mock.calls[0][0]).toEqual(expect.objectContaining({
+      businessAccountId: BIZ, routeRunId: ROUTE, expectedVersion: 1,
+    }));
+    await screen.findByText("Route cancelled");
+  });
+
+  it("does not show cancellation to a read-only viewer", async () => {
+    fetchMyBusinessAccounts.mockResolvedValue({ ok: true, value: { businessAccounts: [{ businessAccountId: BIZ, role: "viewer", name: "Route Shop" }] } });
+    fetchRouteRun.mockResolvedValue({ ok: true, value: { routeRun: {
+      ...route(1, Q2, 4000), state: "accepted", acceptedVersion: 1,
+      stops: route(1, Q2, 4000).stops.map((stop) => ({ ...stop, claimed: true })),
+    } } });
+    render(<RouteRunDetail routeRunId={ROUTE} />);
+    await screen.findByText("Stop set frozen");
+    expect(screen.queryByRole("button", { name: "Cancel accepted Route Run" })).toBeNull();
   });
 });

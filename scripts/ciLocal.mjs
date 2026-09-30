@@ -320,8 +320,8 @@ const STAGES = [
     settle: settleDisposablePorts,
     assert: (out) => {
       const m = out.match(/Route Run Merchant Browser: (\d+)\/(\d+) checks PASS\./);
-      if (!m || m[1] !== "17" || m[2] !== "17") {
-        return "RR-002 requires its complete 17/17 authenticated browser tally";
+      if (!m || m[1] !== "22" || m[2] !== "22") {
+        return "RR-002 requires its complete 22/22 authenticated browser tally";
       }
       if (!out.includes("RR-002 cleanup: Next, gateway, PostgREST and PostgreSQL stopped; disposable build removed.")) {
         return "RR-002 did not confirm clean process teardown";

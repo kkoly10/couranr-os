@@ -126,6 +126,7 @@ const REQUEST_COLUMN_LIST = [
   "payer_type",
   "quote_status",
   "current_quote_version_id",
+  "pickup_manifest_version",
   "source",
   "recipient_name",
   "recipient_phone",

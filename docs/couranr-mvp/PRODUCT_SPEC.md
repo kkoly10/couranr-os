@@ -232,6 +232,17 @@ additional-stop field or the retired $16.99-per-stop Route Saver price.
   a child and grants no payment, dispatch, resource-reservation, custody or stop
   execution authority. Booking stays unavailable until those later authorities
   are built and tested.
+- RR-002 acceptance is the merchant's payer approval of every exact displayed
+  child Quote Version in the immutable accepted Route version, provided the
+  acceptance occurs before each quote's 15-minute window expires. Later passage
+  of time does not undo that approval while the Route remains accepted. This
+  approval is not payment, booking, dispatch, assignment or custody.
+- An accepted Route may be cancelled only before any downstream commercial or
+  physical execution evidence exists. Cancellation releases active child claims
+  atomically, preserves accepted version and events, and removes Route-derived
+  quote approval. The children remain separate editable drafts; any later use
+  needs another valid payer-approval path or a new quote. Archived means a
+  discarded draft; cancelled means a formerly accepted Route released safely.
 
 ## Provenance — this is an EXTRACTION, not a rewrite
 

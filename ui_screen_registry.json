@@ -638,9 +638,9 @@
       "viewport": "Desktop-first responsive",
       "canonical_path": "Derived from MER-004 merchant list design system; no separate approved mock.",
       "image": null,
-      "purpose": "Find Business Route Run drafts, accepted stop sets, and archived drafts without collapsing the child deliveries they group.",
+      "purpose": "Find Business Route Run drafts, accepted stop sets, archived drafts, and safely cancelled accepted Routes without collapsing the child deliveries they group.",
       "actions": "Create Route Run; open Route Run; review state and combined child-delivery estimates.",
-      "states": "Empty; draft; accepted; archived; error.",
+      "states": "Empty; draft; accepted; archived; cancelled; error.",
       "source": "RR-001 and RR-002 in the root decision registry; ROUTE_RUN_IMPLEMENTATION.md",
       "constraints": "Business only. A Route Run groups separate canonical single-destination deliveries. Accepted does not mean paid, booked, assigned, picked up, or in transit. Never revive the retired $16.99/stop Route Saver price."
     },
@@ -661,7 +661,7 @@
       "actions": "Choose common pickup; add/reorder/remove stops; enter recipient/package/value facts; calculate child estimates; save draft; accept stop set.",
       "states": "Blank; validating; child preparation; draft review; stale child; acceptance failure; accepted.",
       "source": "RR-001 and RR-002 in the root decision registry; ROUTE_RUN_IMPLEMENTATION.md",
-      "constraints": "V1 is merchant-paid only, 2–5 stops, one common pickup and one common pickup timing, no restricted items, child packages at most 50 lb, $500 aggregate declared-value ceiling, separate immutable child quotes, no automatic route discount, and no route optimization call from this builder. Acceptance claims children but does not book/pay/dispatch/create custody. Once any child draft is created during an attempt, shared facts and prepared stop facts stay locked so a retry cannot silently diverge from server state."
+      "constraints": "V1 is merchant-paid only, 2–5 stops, one common pickup and one common pickup timing, no restricted items, child packages at most 50 lb, $500 aggregate declared-value ceiling, separate immutable child quotes, no automatic route discount, and no route optimization call from this builder. Acceptance claims children but does not book/pay/dispatch/create custody. Once any child draft is created during an attempt, shared facts and prepared stop facts stay locked so a retry cannot silently diverge from server state. Recovery also checks the server pickup-manifest generation even if the request CAS version is unchanged."
     },
     {
       "id": "MER-019",
@@ -677,10 +677,10 @@
       "canonical_path": "Derived from MER-007 merchant detail design system; no separate approved mock.",
       "image": null,
       "purpose": "Show one Route Run, its immutable stop order, child delivery links, reference estimate sum, stale/claim evidence, and the exact authority currently reached.",
-      "actions": "Accept draft; archive draft; open child delivery; return to Route Runs.",
-      "states": "Draft; stale draft; accepted; archived; error.",
+      "actions": "Approve exact estimates and accept draft; archive draft; confirm pre-execution cancellation of accepted Route; open child delivery; return to Route Runs.",
+      "states": "Draft; stale draft; accepted; archived; cancelled; error.",
       "source": "RR-001 and RR-002 in the root decision registry; ROUTE_RUN_IMPLEMENTATION.md",
-      "constraints": "Do not imply accepted means booked or paid. Recipient/customer data remains child-scoped. No direct merchant dispatch, custody, refund, or arbitrary child-state mutation. Accepted children are frozen against standalone mutation until the later Route executor authority replaces that guard."
+      "constraints": "Do not imply accepted means booked or paid. Recipient/customer data remains child-scoped. No direct merchant dispatch, custody, refund, or arbitrary child-state mutation. Accepted children are frozen against standalone mutation; pre-execution cancellation atomically releases them without refund/provider action and preserves accepted history."
     },
     {
       "id": "DRV-001",

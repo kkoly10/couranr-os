@@ -23,6 +23,8 @@ export type DeliveryRequestView = {
   requesterKind: "business" | "consumer";
   businessAccountId: string | null;
   currentQuoteVersionId: string | null;
+  /** Pickup package-description CAS generation; no raw manifest is exposed. */
+  pickupManifestVersion: number;
   singleDestinationContract: boolean;
   version: number;
   createdAt: string;
@@ -92,6 +94,7 @@ export function toDeliveryRequestView(row: Record<string, any>): DeliveryRequest
     requesterKind: requester.kind,
     businessAccountId: requester.businessAccountId,
     currentQuoteVersionId: stringOrNull(row.current_quote_version_id),
+    pickupManifestVersion: Number(row.pickup_manifest_version ?? 0),
     singleDestinationContract: row.single_destination_contract === true,
     version: Number(row.version),
     createdAt: String(row.created_at),

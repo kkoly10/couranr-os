@@ -5,6 +5,7 @@ import { isRouteRunId, validateRouteDraft } from "@/lib/couranr/routeRuns/draft"
 import {
   abandonRouteRun,
   acceptRouteRun,
+  cancelAcceptedRouteRun,
   listRouteRuns,
   readRouteDraft,
   saveRouteDraft,
@@ -112,7 +113,7 @@ export async function PATCH(req: NextRequest) {
     !isRouteRunId(r.routeRunId) ||
     !isRouteRunId(r.idempotencyKey) ||
     !positiveInteger(r.expectedVersion) ||
-    (r.action !== "accept" && r.action !== "abandon")
+    (r.action !== "accept" && r.action !== "abandon" && r.action !== "cancel")
   ) {
     return routeFailure("invalid_input", "Choose a valid route action.");
   }
@@ -126,8 +127,8 @@ export async function PATCH(req: NextRequest) {
     expectedVersion: r.expectedVersion,
     idempotencyKey: r.idempotencyKey,
   };
-  const result =
-    r.action === "accept" ? await acceptRouteRun(params) : await abandonRouteRun(params);
+  const result = r.action === "accept" ? await acceptRouteRun(params) :
+    r.action === "abandon" ? await abandonRouteRun(params) : await cancelAcceptedRouteRun(params);
   if (result.ok === false) return failureResponse(result);
   return NextResponse.json(
     { routeRun: result.value },

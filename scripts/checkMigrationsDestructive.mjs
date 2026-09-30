@@ -21,7 +21,12 @@ import { fileURLToPath } from "node:url";
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const DIR = path.join(ROOT, "supabase/migrations");
 
-const DESTRUCTIVE = /\b(drop\s+table|drop\s+column|truncate\s+(table\s+)?[a-z_"]|delete\s+from)\b/i;
+const DESTRUCTIVE = /\b(drop\s+table|drop\s+column|truncate\s+(table\s+)?[a-z_"]|delete\s+from)\b/gi;
+// RR-002 explicitly authorizes deleting CURRENT Route child exclusivity locks
+// during a pre-execution cancellation. Immutable accepted versions/events stay.
+// This is the sole exception; every other DELETE remains a gate failure.
+const CLAIM_RELEASE_MIGRATION = "20260930023308_couranr_route_run_preexecution_cancellation.sql";
+const CLAIM_RELEASE = /^delete\s+from\s+public\.couranr_route_run_claims\b/i;
 
 /** Strip -- line comments and /* *\/ block comments, NOT string literals'
  * contents beyond what a scan needs — a destructive statement inside a string
@@ -41,8 +46,11 @@ function scan() {
   const offenders = [];
   for (const f of readdirSync(DIR).filter((f) => f.endsWith(".sql"))) {
     const body = stripComments(readFileSync(path.join(DIR, f), "utf8"));
-    const m = body.match(DESTRUCTIVE);
-    if (m) offenders.push(`${f}: ${m[0]}`);
+    for (const m of body.matchAll(DESTRUCTIVE)) {
+      if (f === CLAIM_RELEASE_MIGRATION && m[0].toLowerCase().startsWith("delete") &&
+          CLAIM_RELEASE.test(body.slice(m.index))) continue;
+      offenders.push(`${f}: ${m[0]}`);
+    }
   }
   return offenders;
 }
@@ -72,7 +80,7 @@ function main() {
     process.exitCode = 1;
     return;
   }
-  console.log("  PASS — no destructive statement in any forward migration");
+  console.log("  PASS — no unapproved destructive statement in any forward migration (one scoped active Route-claim release)");
 }
 
 main();

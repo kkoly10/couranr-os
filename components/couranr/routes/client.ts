@@ -63,6 +63,18 @@ export function abandonRouteRun(input: {
   });
 }
 
+export function cancelAcceptedRouteRun(input: {
+  businessAccountId: string;
+  routeRunId: string;
+  expectedVersion: number;
+  idempotencyKey: string;
+}): Promise<ApiResult<{ routeRun: RouteRunView }>> {
+  return call<{ routeRun: RouteRunView }>("/api/couranr/merchant/route-runs", {
+    method: "PATCH",
+    body: { ...input, action: "cancel" },
+  });
+}
+
 export function recordBusinessDeclaredValue(input: {
   businessAccountId: string;
   requestId: string;

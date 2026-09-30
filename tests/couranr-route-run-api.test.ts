@@ -13,7 +13,7 @@ const endpoint = `http://localhost/api/couranr/merchant/route-runs?businessAccou
 const listEndpoint = `http://localhost/api/couranr/merchant/route-runs?businessAccountId=${BIZ}`;
 const draft = () => ({ routeRunId: ROUTE, businessAccountId: BIZ, state: "draft", title: "Afternoon route", version: 1, currentVersion: 1,
   draftOnly: true, bookingAvailable: false, executionAvailable: false, stopCount: 2, referenceQuoteTotalCents: 3000,
-  quoteBasis: "independent_delivery_quotes_not_a_route_offer", acceptedVersion: null, acceptedAt: null, abandonedAt: null,
+  quoteBasis: "independent_delivery_quotes_not_a_route_offer", acceptedVersion: null, acceptedAt: null, abandonedAt: null, cancelledAt: null,
   stops: IDS.map((requestId, index) => ({ sequence: index + 1, requestId, quoteVersionId: requestId, requestVersion: 1, pickupManifestVersion: 0, stale: false, claimed: false })) });
 const accepted = () => ({ ...draft(), state: "accepted", draftOnly: false, acceptedVersion: 1,
   acceptedAt: "2026-09-26T08:15:00.000Z", stops: draft().stops.map((s) => ({ ...s, claimed: true })) });
@@ -72,6 +72,22 @@ describe("Route Run HTTP safety and exact command identity", () => {
       p_idempotency_key: ACTOR,
     });
     expect(JSON.stringify(await response.json())).not.toMatch(/payment|driverId|vehicleId|bookingId/i);
+  });
+
+  it("cancels only through the named server command and sends no payment instruction", async () => {
+    rpc.mockResolvedValue({ data: { ...accepted(), state: "cancelled", cancelledAt: "2026-09-29T23:00:00Z",
+      stops: draft().stops }, error: null });
+    const response = await PATCH(new NextRequest("http://localhost/api/couranr/merchant/route-runs", {
+      method: "PATCH",
+      body: JSON.stringify({ businessAccountId: BIZ, routeRunId: ROUTE,
+        expectedVersion: 1, idempotencyKey: ACTOR, action: "cancel" }),
+    }));
+    expect(response.status).toBe(200);
+    expect(rpc).toHaveBeenCalledWith("couranr_cancel_accepted_route_run", {
+      p_business_account_id: BIZ, p_actor_user_id: ACTOR, p_route_run_id: ROUTE,
+      p_expected_version: 1, p_idempotency_key: ACTOR,
+    });
+    expect(JSON.stringify(await response.json())).not.toMatch(/paymentIntent|refund|driverId|vehicleId/i);
   });
 
   it("records Business declared value with server-derived protection rather than a client level", async () => {

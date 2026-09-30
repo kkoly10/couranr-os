@@ -1,4 +1,4 @@
-export type RouteRunState = "draft" | "accepted" | "abandoned";
+export type RouteRunState = "draft" | "accepted" | "abandoned" | "cancelled";
 
 export type RouteRunStopView = {
   sequence: number;
@@ -26,6 +26,7 @@ export type RouteRunView = {
   acceptedVersion: number | null;
   acceptedAt: string | null;
   abandonedAt: string | null;
+  cancelledAt: string | null;
   stops: RouteRunStopView[];
 };
 
