@@ -22,7 +22,7 @@ function refuses(label,sql,marker){
   checks++;console.log("PASS",label);
 }
 try{
-  const info=up({quiet:true});
+  const info=up({quiet:true,throughMigration:"20260930150000_couranr_route_run_resource_reservation.sql"});
   console.log(`RR-003c resource: ${info.migrationsApplied} migrations applied`);
   one(rollback);
   check("empty resource rollback removes only Route resource tables",

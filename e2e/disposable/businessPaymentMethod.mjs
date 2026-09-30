@@ -42,7 +42,8 @@ function psqlAsync(sql) {
 
 let postgrest;
 try {
-  const { migrationsApplied } = up({ quiet: true });
+  const { migrationsApplied } = up({ quiet: true,
+    throughMigration: "20260930124500_couranr_business_payment_method_foundation.sql" });
   console.log(`RR-003a SQL: ${migrationsApplied} migrations applied`);
   one(rollback);
   check("empty rollback removes profile", one("select to_regclass('public.couranr_business_payment_profiles') is null"), "t");
