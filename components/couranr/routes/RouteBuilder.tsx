@@ -16,6 +16,7 @@ import { CardSkeleton, EmptyState, ErrorState, LoadingState, PermissionDeniedSta
 import { BusinessPlaceAutocomplete } from "@/components/couranr/requests/BusinessPlaceAutocomplete";
 import {
   createDeliveryRequest,
+  fetchDeliveryRequest,
   fetchMyBusinessAccounts,
   isApiFailure,
   newIdempotencyKey,
@@ -26,7 +27,7 @@ import {
 import { formatCents, type DeliveryRequestView } from "@/lib/couranr/requests/view";
 import type { GoogleAddressSnapshot } from "@/lib/couranr/routing/address";
 import type { RouteRunView } from "@/lib/couranr/routeRuns/types";
-import { acceptRouteRun, recordBusinessDeclaredValue, saveRouteRunDraft } from "./client";
+import { acceptRouteRun, fetchRouteRun, recordBusinessDeclaredValue, saveRouteRunDraft } from "./client";
 
 type StopDraft = {
   localId: string;
@@ -47,6 +48,93 @@ type StopDraft = {
   valueSaved: boolean;
   currentRequestVersion: number | null;
 };
+
+type PendingStop = Omit<StopDraft, "request"> & { requestId: string | null };
+type PendingAttempt = {
+  schema: 1;
+  savedAt: number;
+  businessAccountId: string;
+  title: string;
+  pickup: GoogleAddressSnapshot;
+  timingIntent: "asap" | "scheduled";
+  requestedPickupLocal: string;
+  restrictedConfirmed: boolean;
+  stops: PendingStop[];
+  routeRunId: string;
+  routeSaveKey: string;
+  routeAcceptKey: string;
+  routeSaved: boolean;
+};
+
+const pendingKey = "couranr-route-builder-pending-v1";
+const pendingMaxAgeMs = 24 * 60 * 60 * 1000;
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return !!value && typeof value === "object" && !Array.isArray(value);
+}
+
+function isAddress(value: unknown): value is GoogleAddressSnapshot {
+  return isRecord(value) && typeof value.googlePlaceId === "string" && value.googlePlaceId.length > 0;
+}
+
+function readPendingAttempt(): PendingAttempt | null {
+  try {
+    const raw = window.sessionStorage.getItem(pendingKey);
+    if (!raw) return null;
+    const value: unknown = JSON.parse(raw);
+    if (
+      !isRecord(value) || value.schema !== 1 || typeof value.savedAt !== "number" ||
+      value.savedAt > Date.now() || Date.now() - value.savedAt > pendingMaxAgeMs ||
+      typeof value.businessAccountId !== "string" || typeof value.title !== "string" ||
+      !isAddress(value.pickup) || !["asap", "scheduled"].includes(String(value.timingIntent)) ||
+      typeof value.requestedPickupLocal !== "string" || typeof value.restrictedConfirmed !== "boolean" ||
+      typeof value.routeRunId !== "string" || typeof value.routeSaveKey !== "string" ||
+      typeof value.routeAcceptKey !== "string" || typeof value.routeSaved !== "boolean" ||
+      !Array.isArray(value.stops) || value.stops.length < 2 || value.stops.length > 5 ||
+      !value.stops.every((stop: unknown) =>
+        isRecord(stop) && typeof stop.localId === "string" && typeof stop.createKey === "string" &&
+        isAddress(stop.dropoff) && typeof stop.recipientName === "string" &&
+        typeof stop.recipientEmail === "string" && typeof stop.recipientPhone === "string" &&
+        ["0_25_lb", "over_25_to_50_lb"].includes(String(stop.weightBand)) &&
+        typeof stop.declaredValue === "string" && typeof stop.pickupDescription === "string" &&
+        typeof stop.packageCount === "string" && typeof stop.orderReference === "string" &&
+        typeof stop.handlingNotes === "string" && ["photo_or_pin", "signature"].includes(String(stop.proofMethod)) &&
+        (stop.requestId === null || typeof stop.requestId === "string") &&
+        typeof stop.manifestSaved === "boolean" && typeof stop.valueSaved === "boolean" &&
+        (stop.currentRequestVersion === null || Number.isSafeInteger(stop.currentRequestVersion))
+      )
+    ) {
+      window.sessionStorage.removeItem(pendingKey);
+      return null;
+    }
+    return value as PendingAttempt;
+  } catch {
+    return null;
+  }
+}
+
+function writePendingAttempt(attempt: PendingAttempt) {
+  try {
+    const previous = readPendingAttempt();
+    if (previous?.routeRunId === attempt.routeRunId) {
+      const progress = (value: PendingAttempt) => value.stops.reduce((count, stop) =>
+        count + Number(stop.requestId !== null) + Number(stop.manifestSaved) + Number(stop.valueSaved),
+      value.routeSaved ? 100 : 0);
+      // React may flush an older render's effect after a remote command has
+      // already persisted its response. Never replace known server progress
+      // with that stale browser render.
+      if (progress(attempt) < progress(previous)) return true;
+    }
+    window.sessionStorage.setItem(pendingKey, JSON.stringify(attempt));
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function clearPendingAttempt() {
+  try { window.sessionStorage.removeItem(pendingKey); } catch { /* Storage may be disabled. */ }
+}
 
 const uuid = () => crypto.randomUUID();
 const email = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -87,6 +175,29 @@ function packageCount(raw: string): number | null | "invalid" {
   return Number.isInteger(n) && n >= 1 && n <= 9999 ? n : "invalid";
 }
 
+function preparedRequestMatches(
+  request: DeliveryRequestView,
+  businessAccountId: string,
+  pickup: GoogleAddressSnapshot,
+  stop: StopDraft,
+  timingIntent: "asap" | "scheduled",
+  requestedPickupLocal: string,
+): boolean {
+  const pickupId = isRecord(request.pickupAddress) ? request.pickupAddress.googlePlaceId : null;
+  const dropoffId = isRecord(request.dropoffAddress) ? request.dropoffAddress.googlePlaceId : null;
+  return request.businessAccountId === businessAccountId && request.requestState === "draft" &&
+    request.payerType === "merchant" && request.singleDestinationContract === true &&
+    request.additionalStops === 0 && request.serviceLevel === "standard" &&
+    request.restrictedClass === "none" && request.weightBand === stop.weightBand &&
+    request.proofMethod === stop.proofMethod &&
+    pickupId === pickup.googlePlaceId && dropoffId === stop.dropoff?.googlePlaceId &&
+    request.recipientEmail?.trim().toLowerCase() === stop.recipientEmail.trim().toLowerCase() &&
+    request.recipientName?.trim() === stop.recipientName.trim() &&
+    request.timingIntent === timingIntent &&
+    (timingIntent === "asap" || request.requestedPickupLocal?.slice(0, 16) === requestedPickupLocal.slice(0, 16)) &&
+    request.currentQuoteVersionId !== null && request.quote.deliverySubtotalCents !== null;
+}
+
 export function RouteBuilder() {
   const router = useRouter();
   const [accounts, setAccounts] = React.useState<BusinessAccountOption[] | null>(null);
@@ -98,12 +209,54 @@ export function RouteBuilder() {
   const [restrictedConfirmed, setRestrictedConfirmed] = React.useState(false);
   const [stops, setStops] = React.useState<StopDraft[]>(() => [newStop(), newStop()]);
   const [route, setRoute] = React.useState<RouteRunView | null>(null);
-  const [busy, setBusy] = React.useState<"prepare" | "accept" | null>(null);
+  const [busy, setBusy] = React.useState<"prepare" | "accept" | "restore" | null>(null);
   const [error, setError] = React.useState<string | null>(null);
+  const [resumeCandidate, setResumeCandidate] = React.useState<PendingAttempt | null>(null);
+  const [recoveryChecked, setRecoveryChecked] = React.useState(false);
+  const [attemptActive, setAttemptActive] = React.useState(false);
 
   const routeRunId = React.useRef(uuid());
   const routeSaveKey = React.useRef(uuid());
   const routeAcceptKey = React.useRef(uuid());
+
+  React.useEffect(() => {
+    let cancelled = false;
+    const pending = readPendingAttempt();
+    queueMicrotask(() => {
+      if (cancelled) return;
+      setResumeCandidate(pending);
+      setRecoveryChecked(true);
+    });
+    return () => { cancelled = true; };
+  }, []);
+
+  function persistAttempt(working: StopDraft[], routeSaved: boolean) {
+    if (!pickup) return false;
+    return writePendingAttempt({
+      schema: 1,
+      savedAt: Date.now(),
+      businessAccountId,
+      title,
+      pickup,
+      timingIntent,
+      requestedPickupLocal,
+      restrictedConfirmed,
+      stops: working.map(({ request, ...stop }) => ({ ...stop, requestId: request?.id ?? null })),
+      routeRunId: routeRunId.current,
+      routeSaveKey: routeSaveKey.current,
+      routeAcceptKey: routeAcceptKey.current,
+      routeSaved,
+    });
+  }
+
+  // Once an attempt has started, edits to not-yet-created stops also survive a
+  // reload. Persist before each remote command below as well, so a response
+  // lost between commands retains the same idempotency keys.
+  React.useEffect(() => {
+    if (attemptActive) persistAttempt(stops, route !== null);
+    // persistAttempt uses exactly these current form values and stable refs.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [attemptActive, stops, route, businessAccountId, title, pickup, timingIntent, requestedPickupLocal, restrictedConfirmed]);
 
   React.useEffect(() => {
     let cancelled = false;
@@ -122,6 +275,69 @@ export function RouteBuilder() {
     });
     return () => { cancelled = true; };
   }, []);
+
+  async function resumeAttempt() {
+    const candidate = resumeCandidate;
+    if (!candidate || busy || !accounts) return;
+    if (!accounts.some((account) =>
+      account.businessAccountId === candidate.businessAccountId &&
+      ["owner", "manager", "dispatcher"].includes(account.role)
+    )) {
+      setError("This saved attempt is not available to the signed-in business account.");
+      return;
+    }
+    setBusy("restore");
+    setError(null);
+    const restored: StopDraft[] = [];
+    for (const stop of candidate.stops) {
+      let request: DeliveryRequestView | null = null;
+      if (stop.requestId) {
+        const result = await fetchDeliveryRequest({ id: stop.requestId, businessAccountId: candidate.businessAccountId });
+        if (isApiFailure(result)) {
+          setError(`A prepared delivery could not be loaded. ${withReference(result)}`);
+          setBusy(null);
+          return;
+        }
+        request = result.value.request;
+        if (
+          request.id !== stop.requestId || request.businessAccountId !== candidate.businessAccountId ||
+          !preparedRequestMatches(request, candidate.businessAccountId, candidate.pickup,
+            { ...stop, request: null }, candidate.timingIntent, candidate.requestedPickupLocal) ||
+          (stop.valueSaved && request.version !== stop.currentRequestVersion)
+        ) {
+          setError("A prepared delivery changed since this attempt was saved. Open the existing delivery and start a new Route Run; Couranr will not silently create a replacement.");
+          setBusy(null);
+          return;
+        }
+      }
+      restored.push({ ...stop, request });
+    }
+    if (candidate.routeSaved) {
+      const current = await fetchRouteRun({ businessAccountId: candidate.businessAccountId, routeRunId: candidate.routeRunId });
+      if (isApiFailure(current)) {
+        setError(`The saved Route Run could not be loaded. ${withReference(current)}`);
+        setBusy(null);
+        return;
+      }
+      clearPendingAttempt();
+      setBusy(null);
+      router.push(`/app/business/routes/${candidate.routeRunId}?businessAccountId=${candidate.businessAccountId}`);
+      return;
+    }
+    routeRunId.current = candidate.routeRunId;
+    routeSaveKey.current = candidate.routeSaveKey;
+    routeAcceptKey.current = candidate.routeAcceptKey;
+    setBusinessAccountId(candidate.businessAccountId);
+    setTitle(candidate.title);
+    setPickup(candidate.pickup);
+    setTimingIntent(candidate.timingIntent);
+    setRequestedPickupLocal(candidate.requestedPickupLocal);
+    setRestrictedConfirmed(candidate.restrictedConfirmed);
+    setStops(restored);
+    setAttemptActive(true);
+    setResumeCandidate(null);
+    setBusy(null);
+  }
 
   function patchStop(index: number, patch: Partial<StopDraft>) {
     setStops((rows) => rows.map((row, i) => i === index ? { ...row, ...patch } : row));
@@ -176,6 +392,12 @@ export function RouteBuilder() {
     setError(null);
 
     const working = stops.map((s) => ({ ...s }));
+    if (!persistAttempt(working, false)) {
+      setBusy(null);
+      setError("This browser cannot save the Route Run retry keys. Enable session storage or use another browser before creating delivery drafts.");
+      return;
+    }
+    setAttemptActive(true);
     for (let index = 0; index < working.length; index++) {
       const stop = working[index];
       try {
@@ -207,7 +429,11 @@ export function RouteBuilder() {
           });
           if (isApiFailure(created)) throw new Error(`Stop ${index + 1}: ${withReference(created)}`);
           request = created.value.request;
+          if (!preparedRequestMatches(request, businessAccountId, pickup, stop, timingIntent, requestedPickupLocal)) {
+            throw new Error(`Stop ${index + 1}: this retry key belongs to a different delivery draft. Open the existing draft or discard this browser attempt; Couranr will not submit mismatched package facts.`);
+          }
           working[index] = { ...working[index], request, currentRequestVersion: request.version };
+          persistAttempt(working, false);
           setStops(working.map((s) => ({ ...s })));
         }
 
@@ -227,6 +453,7 @@ export function RouteBuilder() {
           });
           if (isApiFailure(manifest)) throw new Error(`Stop ${index + 1}: ${withReference(manifest)}`);
           working[index] = { ...working[index], manifestSaved: true };
+          persistAttempt(working, false);
           setStops(working.map((s) => ({ ...s })));
         }
 
@@ -246,6 +473,7 @@ export function RouteBuilder() {
             valueSaved: true,
             currentRequestVersion: declared.value.version,
           };
+          persistAttempt(working, false);
           setStops(working.map((s) => ({ ...s })));
         }
       } catch (e) {
@@ -270,17 +498,24 @@ export function RouteBuilder() {
       return;
     }
     setStops(working);
+    persistAttempt(working, true);
     setRoute(saved.value.routeRun);
   }
 
   async function accept() {
-    if (!route || busy) return;
+    if (!route || busy || route.version !== route.currentVersion) return;
+    const matchingStops = route.stops.every((stop, index) =>
+      stops[index]?.request?.id === stop.requestId &&
+      stops[index]?.request?.currentQuoteVersionId === stop.quoteVersionId
+    );
+    const displayedTotal = stops.reduce((sum, stop) => sum + (stop.request?.quote.deliverySubtotalCents ?? 0), 0);
+    if (!matchingStops || displayedTotal !== route.referenceQuoteTotalCents) return;
     setBusy("accept");
     setError(null);
     const result = await acceptRouteRun({
       businessAccountId,
       routeRunId: route.routeRunId,
-      expectedVersion: route.currentVersion,
+      expectedVersion: route.version,
       idempotencyKey: routeAcceptKey.current,
     });
     setBusy(null);
@@ -288,9 +523,10 @@ export function RouteBuilder() {
       setError(withReference(result));
       return;
     }
+    clearPendingAttempt();
     router.push(`/app/business/routes/${result.value.routeRun.routeRunId}?businessAccountId=${businessAccountId}`);
   }
-  if (accounts === null) return <LoadingState label="Loading Route Run builder"><CardSkeleton lines={5} /></LoadingState>;
+  if (accounts === null || !recoveryChecked) return <LoadingState label="Loading Route Run builder"><CardSkeleton lines={5} /></LoadingState>;
   if (accounts.length === 0) {
     return <EmptyState title="No business account yet" body="Set up your business workspace before creating a Route Run." action={{ label: "Set up workspace", href: "/app/business/onboarding" }} />;
   }
@@ -302,7 +538,45 @@ export function RouteBuilder() {
     return <PermissionDeniedState action={{ label: "Back to Route Runs", href: "/app/business/routes" }} />;
   }
 
+  if (resumeCandidate) {
+    if (!writableAccounts.some((account) => account.businessAccountId === resumeCandidate.businessAccountId)) {
+      return (
+        <Card>
+          <CardHeader title="An unfinished attempt belongs to another business" description="Its details cannot be shown from this account." />
+          <Button variant="ghost" onClick={() => {
+            clearPendingAttempt();
+            setResumeCandidate(null);
+          }}>Discard browser copy</Button>
+        </Card>
+      );
+    }
+    return (
+      <Stack gap={4}>
+        {error ? <ErrorState title="Route Run could not be resumed" body={error} /> : null}
+        <Card>
+          <CardHeader title="Continue your unfinished Route Run?" description="This browser tab saved an in-progress attempt, including its child delivery retry keys." />
+          <Stack gap={3}>
+            <Text>{resumeCandidate.title} · {resumeCandidate.stops.length} stops</Text>
+            <Text size="sm" muted>Continuing reuses prepared delivery drafts. Discarding clears this browser copy but does not delete any delivery drafts already created on the server.</Text>
+            <Cluster gap={3}>
+              <Button variant="primary" loading={busy === "restore"} disabled={busy !== null} onClick={() => void resumeAttempt()}>Continue saved attempt</Button>
+              <Button variant="ghost" disabled={busy !== null} onClick={() => {
+                clearPendingAttempt();
+                setResumeCandidate(null);
+                setError(null);
+              }}>Discard browser copy</Button>
+            </Cluster>
+          </Stack>
+        </Card>
+      </Stack>
+    );
+  }
+
   if (route) {
+    const estimatesMatch = route.stops.every((stop, index) =>
+      stops[index]?.request?.id === stop.requestId &&
+      stops[index]?.request?.currentQuoteVersionId === stop.quoteVersionId
+    ) && stops.reduce((sum, stop) => sum + (stop.request?.quote.deliverySubtotalCents ?? 0), 0) === route.referenceQuoteTotalCents;
     return (
       <Stack gap={6}>
         {error ? <ErrorState title="Route Run could not be accepted" body={error} /> : null}
@@ -318,8 +592,18 @@ export function RouteBuilder() {
               Couranr is summing the individual delivery estimates. There is no Route Run discount in V1, and this number is not a merchandise total.
             </Text>
             <Alert tone="info" title="What acceptance does">
-              Acceptance claims these exact delivery drafts so they cannot be submitted or changed separately. Payment, driver reservation, pickup and custody are still separate later steps.
+              Accepting approves each displayed delivery estimate and their combined total for later merchant payment. It claims these exact drafts so they cannot be submitted or changed separately. You are not charged now; booking, driver reservation, pickup and custody are separate later steps.
             </Alert>
+            {route.version !== route.currentVersion ? (
+              <Alert tone="warning" title="This review is out of date">
+                A newer stop set exists. Open the current Route Run to review its latest estimates before accepting.
+              </Alert>
+            ) : null}
+            {!estimatesMatch ? (
+              <Alert tone="warning" title="These estimates need a fresh review">
+                The displayed child estimates do not match this Route Run snapshot. Open the current Route Run to review its authoritative stop set before accepting.
+              </Alert>
+            ) : null}
             {route.stops.some((s) => s.stale) ? (
               <Alert tone="warning" title="A stop changed">
                 One of the child deliveries changed after the draft was created. Open that delivery and rebuild the Route Run before accepting.
@@ -329,14 +613,17 @@ export function RouteBuilder() {
               <Button
                 variant="primary"
                 loading={busy === "accept"}
-                disabled={busy !== null || route.stops.some((s) => s.stale)}
+                disabled={busy !== null || !estimatesMatch || route.version !== route.currentVersion || route.stops.some((s) => s.stale)}
                 onClick={() => void accept()}
               >
-                Accept stop set
+                Approve estimates and accept stops
               </Button>
               <Button
                 variant="ghost"
-                onClick={() => router.push(`/app/business/routes/${route.routeRunId}?businessAccountId=${businessAccountId}`)}
+                onClick={() => {
+                  clearPendingAttempt();
+                  router.push(`/app/business/routes/${route.routeRunId}?businessAccountId=${businessAccountId}`);
+                }}
               >
                 Save as draft
               </Button>

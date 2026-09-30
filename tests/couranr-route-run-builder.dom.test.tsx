@@ -6,6 +6,8 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const push = vi.fn();
 const fetchMyBusinessAccounts = vi.fn();
 const createDeliveryRequest = vi.fn();
+const fetchDeliveryRequest = vi.fn();
+const fetchRouteRun = vi.fn();
 const saveBusinessPickupManifest = vi.fn();
 const recordBusinessDeclaredValue = vi.fn();
 const saveRouteRunDraft = vi.fn();
@@ -40,6 +42,7 @@ vi.mock("@/components/couranr/requests/BusinessPlaceAutocomplete", () => ({
 vi.mock("@/components/couranr/requests/client", () => ({
   fetchMyBusinessAccounts: (...args: unknown[]) => fetchMyBusinessAccounts(...args),
   createDeliveryRequest: (...args: unknown[]) => createDeliveryRequest(...args),
+  fetchDeliveryRequest: (...args: unknown[]) => fetchDeliveryRequest(...args),
   saveBusinessPickupManifest: (...args: unknown[]) => saveBusinessPickupManifest(...args),
   newIdempotencyKey: () => crypto.randomUUID(),
   isApiFailure: (value: { ok: boolean }) => value.ok === false,
@@ -49,6 +52,7 @@ vi.mock("@/components/couranr/requests/client", () => ({
 vi.mock("@/components/couranr/routes/client", () => ({
   recordBusinessDeclaredValue: (...args: unknown[]) => recordBusinessDeclaredValue(...args),
   saveRouteRunDraft: (...args: unknown[]) => saveRouteRunDraft(...args),
+  fetchRouteRun: (...args: unknown[]) => fetchRouteRun(...args),
   acceptRouteRun: (...args: unknown[]) => acceptRouteRun(...args),
 }));
 
@@ -66,10 +70,16 @@ function account(role = "owner") {
   };
 }
 
-function delivery(id: string, subtotal: number) {
+function delivery(id: string, subtotal: number, input: Record<string, unknown>) {
   return {
+    ...input,
     id,
+    businessAccountId: BIZ,
+    requestState: "draft",
+    payerType: "merchant",
+    singleDestinationContract: true,
     version: 1,
+    currentQuoteVersionId: id,
     quote: { deliverySubtotalCents: subtotal },
   };
 }
@@ -100,10 +110,13 @@ function routeDraft() {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  window.sessionStorage.clear();
   fetchMyBusinessAccounts.mockResolvedValue(account());
-  createDeliveryRequest
-    .mockResolvedValueOnce({ ok: true, value: { request: delivery(R1, 1800) } })
-    .mockResolvedValueOnce({ ok: true, value: { request: delivery(R2, 2200) } });
+  let created = 0;
+  createDeliveryRequest.mockImplementation(({ request }: { request: Record<string, unknown> }) => {
+    const id = created++ === 0 ? R1 : R2;
+    return Promise.resolve({ ok: true, value: { request: delivery(id, id === R1 ? 1800 : 2200, request) } });
+  });
   saveBusinessPickupManifest.mockResolvedValue({
     ok: true,
     value: { pickupManifest: { manifestVersion: 1 } },
@@ -178,6 +191,7 @@ describe("RR-002 RouteBuilder", () => {
     expect(routeCall).not.toHaveProperty("price");
     expect(screen.getByText(/\$40\.00 combined delivery estimates/i)).toBeTruthy();
     expect(screen.getByText(/no payment or driver booking happens yet/i)).toBeTruthy();
+    expect(screen.getByText(/approves each displayed delivery estimate/i)).toBeTruthy();
   });
 
   it("accepts only the immutable stop set and then navigates to Route detail", async () => {
@@ -186,7 +200,7 @@ describe("RR-002 RouteBuilder", () => {
     await fillTwoStops(user);
     await user.click(screen.getByRole("button", { name: "Calculate delivery estimates" }));
     await screen.findByText("Review Route Run");
-    await user.click(screen.getByRole("button", { name: "Accept stop set" }));
+    await user.click(screen.getByRole("button", { name: "Approve estimates and accept stops" }));
 
     await waitFor(() => expect(acceptRouteRun).toHaveBeenCalledTimes(1));
     expect(acceptRouteRun.mock.calls[0][0]).toEqual(expect.objectContaining({
@@ -200,7 +214,7 @@ describe("RR-002 RouteBuilder", () => {
   it("locks prepared server facts after a partial failure so retry cannot drift", async () => {
     createDeliveryRequest
       .mockReset()
-      .mockResolvedValueOnce({ ok: true, value: { request: delivery(R1, 1800) } })
+      .mockImplementationOnce(({ request }: { request: Record<string, unknown> }) => Promise.resolve({ ok: true, value: { request: delivery(R1, 1800, request) } }))
       .mockResolvedValueOnce({ ok: false, status: 500, error: "Second stop failed." });
     recordBusinessDeclaredValue
       .mockReset()
@@ -222,7 +236,7 @@ describe("RR-002 RouteBuilder", () => {
     let releaseFirst: (value: unknown) => void = () => {};
     createDeliveryRequest.mockReset()
       .mockImplementationOnce(() => new Promise((resolve) => { releaseFirst = resolve; }))
-      .mockResolvedValueOnce({ ok: true, value: { request: delivery(R2, 2200) } });
+      .mockImplementationOnce(({ request }: { request: Record<string, unknown> }) => Promise.resolve({ ok: true, value: { request: delivery(R2, 2200, request) } }));
     const user = userEvent.setup();
     render(<RouteBuilder />);
     await fillTwoStops(user);
@@ -236,10 +250,127 @@ describe("RR-002 RouteBuilder", () => {
     await user.type(screen.getByLabelText(/Route title/i), "changed while saving");
     expect(screen.getByLabelText(/Route title/i)).toHaveProperty("value", "Friday local orders");
 
-    await act(async () => { releaseFirst({ ok: true, value: { request: delivery(R1, 1800) } }); });
+    const firstInput = createDeliveryRequest.mock.calls[0][0].request;
+    await act(async () => { releaseFirst({ ok: true, value: { request: delivery(R1, 1800, firstInput) } }); });
     await screen.findByText("Review Route Run");
     expect(saveRouteRunDraft.mock.calls[0][0]).toEqual(expect.objectContaining({
       title: "Friday local orders", requestIds: [R1, R2],
     }));
+  });
+
+  it("refuses acceptance when an idempotent save replays an older displayed draft", async () => {
+    saveRouteRunDraft.mockResolvedValue({ ok: true, value: { routeRun: { ...routeDraft(), currentVersion: 2 } } });
+    const user = userEvent.setup();
+    render(<RouteBuilder />);
+    await fillTwoStops(user);
+    await user.click(screen.getByRole("button", { name: "Calculate delivery estimates" }));
+    expect(await screen.findByText("This review is out of date")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Approve estimates and accept stops" })).toHaveProperty("disabled", true);
+    expect(acceptRouteRun).not.toHaveBeenCalled();
+  });
+
+  it("rejects an idempotent child replay whose stored destination differs from the browser attempt", async () => {
+    createDeliveryRequest.mockReset().mockImplementationOnce(({ request }: { request: Record<string, unknown> }) =>
+      Promise.resolve({ ok: true, value: { request: delivery(R1, 1800, {
+        ...request,
+        dropoffAddress: { googlePlaceId: "different-place" },
+      }) } }),
+    );
+    const user = userEvent.setup();
+    render(<RouteBuilder />);
+    await fillTwoStops(user);
+    await user.click(screen.getByRole("button", { name: "Calculate delivery estimates" }));
+    expect(await screen.findByText(/this retry key belongs to a different delivery draft/i)).toBeTruthy();
+    expect(saveBusinessPickupManifest).not.toHaveBeenCalled();
+    expect(saveRouteRunDraft).not.toHaveBeenCalled();
+  });
+
+  it("resumes a partial attempt after reload with the original child keys and no duplicate first child", async () => {
+    createDeliveryRequest.mockReset()
+      .mockImplementationOnce(({ request }: { request: Record<string, unknown> }) => Promise.resolve({ ok: true, value: { request: delivery(R1, 1800, request) } }))
+      .mockResolvedValueOnce({ ok: false, status: 500, error: "Second stop failed." })
+      .mockImplementationOnce(({ request }: { request: Record<string, unknown> }) => Promise.resolve({ ok: true, value: { request: delivery(R2, 2200, request) } }));
+    recordBusinessDeclaredValue.mockReset()
+      .mockResolvedValueOnce({ ok: true, value: { requestId: R1, version: 2, declaredValueCents: 10000, protectionLevel: "secure_pickup" } })
+      .mockResolvedValueOnce({ ok: true, value: { requestId: R2, version: 2, declaredValueCents: 10000, protectionLevel: "secure_pickup" } });
+
+    const user = userEvent.setup();
+    const page = render(<RouteBuilder />);
+    await fillTwoStops(user);
+    await user.click(screen.getByRole("button", { name: "Calculate delivery estimates" }));
+    await screen.findByText("Prepared details are locked");
+    const firstCreate = createDeliveryRequest.mock.calls[0][0];
+    const firstRequest = firstCreate.request;
+    expect(window.sessionStorage.getItem("couranr-route-builder-pending-v1")).toContain(R1);
+    page.unmount();
+
+    fetchDeliveryRequest.mockResolvedValue({ ok: true, value: { request: {
+      ...delivery(R1, 1800, firstRequest),
+      version: 2,
+      businessAccountId: BIZ,
+      requestState: "draft",
+      payerType: "merchant",
+      pickupAddress: firstRequest.pickupAddress,
+      dropoffAddress: firstRequest.dropoffAddress,
+      recipientEmail: firstRequest.recipientEmail,
+      recipientName: firstRequest.recipientName,
+    } } });
+
+    render(<RouteBuilder />);
+    await screen.findByText("Continue your unfinished Route Run?");
+    expect(createDeliveryRequest).toHaveBeenCalledTimes(2);
+    await user.click(screen.getByRole("button", { name: "Continue saved attempt" }));
+    await screen.findByText("Prepared details are locked");
+    await user.click(screen.getByRole("button", { name: "Calculate delivery estimates" }));
+    await screen.findByText("Review Route Run");
+
+    expect(createDeliveryRequest).toHaveBeenCalledTimes(3);
+    expect(createDeliveryRequest.mock.calls[2][0].idempotencyKey).toBe(createDeliveryRequest.mock.calls[1][0].idempotencyKey);
+    expect(saveBusinessPickupManifest).toHaveBeenCalledTimes(2);
+    expect(recordBusinessDeclaredValue).toHaveBeenCalledTimes(2);
+    expect(saveRouteRunDraft.mock.calls[0][0].requestIds).toEqual([R1, R2]);
+  });
+
+  it("does not reveal a saved Route attempt to a different signed-in business", async () => {
+    createDeliveryRequest.mockReset()
+      .mockImplementationOnce(({ request }: { request: Record<string, unknown> }) => Promise.resolve({ ok: true, value: { request: delivery(R1, 1800, request) } }))
+      .mockResolvedValueOnce({ ok: false, status: 500, error: "Second stop failed." });
+    const user = userEvent.setup();
+    const page = render(<RouteBuilder />);
+    await fillTwoStops(user);
+    await user.click(screen.getByRole("button", { name: "Calculate delivery estimates" }));
+    await screen.findByText("Prepared details are locked");
+    page.unmount();
+    fetchMyBusinessAccounts.mockResolvedValue({ ok: true, value: { businessAccounts: [{
+      businessAccountId: "99999999-9999-4999-8999-999999999999", name: "Other Shop", role: "owner",
+    }] } });
+
+    render(<RouteBuilder />);
+    expect(await screen.findByText("An unfinished attempt belongs to another business")).toBeTruthy();
+    expect(screen.queryByText("Friday local orders")).toBeNull();
+    expect(screen.queryByRole("button", { name: "Continue saved attempt" })).toBeNull();
+    expect(fetchDeliveryRequest).not.toHaveBeenCalled();
+  });
+
+  it("does not create a child when the browser cannot persist retry keys", async () => {
+    const user = userEvent.setup();
+    render(<RouteBuilder />);
+    await fillTwoStops(user);
+    const original = Object.getOwnPropertyDescriptor(window, "sessionStorage");
+    Object.defineProperty(window, "sessionStorage", {
+      configurable: true,
+      value: {
+        getItem: () => null,
+        setItem: () => { throw new Error("quota denied"); },
+        removeItem: () => {},
+      },
+    });
+    try {
+      await user.click(screen.getByRole("button", { name: "Calculate delivery estimates" }));
+      expect(await screen.findByText(/cannot save the Route Run retry keys/i)).toBeTruthy();
+      expect(createDeliveryRequest).not.toHaveBeenCalled();
+    } finally {
+      if (original) Object.defineProperty(window, "sessionStorage", original);
+    }
   });
 });

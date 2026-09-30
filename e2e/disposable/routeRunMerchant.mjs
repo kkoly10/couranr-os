@@ -229,8 +229,8 @@ async function main() {
     await ownerPage.goto(`${BASE}/app/business/routes/${routeId}?businessAccountId=${business}`, { waitUntil: "domcontentloaded" });
     await ownerPage.getByText("Browser Route", { exact: true }).waitFor({ state: "visible", timeout: 30_000 });
     check("B10", "detail renders both stops", await ownerPage.getByText("Stop 1", { exact: true }).isVisible() && await ownerPage.getByText("Stop 2", { exact: true }).isVisible());
-    check("B11", "draft owner sees acceptance action", await ownerPage.getByRole("button", { name: "Accept stop set" }).isVisible());
-    await ownerPage.getByRole("button", { name: "Accept stop set" }).click();
+    check("B11", "draft owner sees acceptance action", await ownerPage.getByRole("button", { name: "Approve estimates and accept stops" }).isVisible());
+    await ownerPage.getByRole("button", { name: "Approve estimates and accept stops" }).click();
     await ownerPage.getByText("Stop set frozen", { exact: true }).waitFor({ state: "visible", timeout: 30_000 });
     check("B12", "browser acceptance freezes Route state in PostgreSQL",
       sql(`select route_state from public.couranr_route_runs where id='${routeId}'`) === "accepted");
@@ -245,7 +245,7 @@ async function main() {
     await viewerPage.getByText("Browser Route", { exact: true }).waitFor({ state: "visible", timeout: 30_000 });
     check("B15", "viewer may inspect a Route Run", await viewerPage.getByText("Stop set frozen", { exact: true }).isVisible());
     check("B16", "viewer cannot accept/archive/reorder",
-      await viewerPage.getByRole("button", { name: "Accept stop set" }).count() === 0 &&
+      await viewerPage.getByRole("button", { name: "Approve estimates and accept stops" }).count() === 0 &&
       await viewerPage.getByRole("button", { name: "Archive draft" }).count() === 0 &&
       await viewerPage.getByRole("button", { name: "Up" }).count() === 0);
     check("B17", "mobile Route detail has no horizontal overflow",

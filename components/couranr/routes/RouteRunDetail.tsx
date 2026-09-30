@@ -28,6 +28,19 @@ function addressLabel(value: unknown): string {
   return parts.length ? parts.join(", ") : "Address unavailable";
 }
 
+async function loadStopDetails(route: RouteRunView, businessAccountId: string) {
+  const results = await Promise.all(route.stops.map((stop) =>
+    fetchDeliveryRequest({ id: stop.requestId, businessAccountId }),
+  ));
+  const details = new Map<string, DeliveryRequestView>();
+  for (let i = 0; i < results.length; i++) {
+    const result = results[i];
+    if (isApiFailure(result)) return { details: new Map<string, DeliveryRequestView>(), error: withReference(result) };
+    details.set(route.stops[i].requestId, result.value.request);
+  }
+  return { details, error: null };
+}
+
 export function RouteRunDetail({ routeRunId }: { routeRunId: string }) {
   const router = useRouter();
   const search = useSearchParams();
@@ -69,28 +82,23 @@ export function RouteRunDetail({ routeRunId }: { routeRunId: string }) {
         setError(withReference(result));
         return;
       }
-      const details = await Promise.all(
-        result.value.routeRun.stops.map((stop) =>
-          fetchDeliveryRequest({ id: stop.requestId, businessAccountId }),
-        ),
-      );
+      const loaded = await loadStopDetails(result.value.routeRun, businessAccountId);
       if (cancelled) return;
-      const map = new Map<string, DeliveryRequestView>();
-      for (let i = 0; i < details.length; i++) {
-        const detail = details[i];
-        if (!isApiFailure(detail)) {
-          map.set(result.value.routeRun.stops[i].requestId, detail.value.request);
-        }
-      }
-      setError(null);
+      setError(loaded.error);
       setRoute(result.value.routeRun);
-      setDeliveries(map);
+      setDeliveries(loaded.details);
     });
     return () => { cancelled = true; };
   }, [businessAccountId, routeRunId]);
 
   async function act(kind: "accept" | "abandon") {
-    if (!route || busy) return;
+    if (!route || busy || route.version !== route.currentVersion) return;
+    const currentTotals = route.stops.map((stop) => deliveries.get(stop.requestId)?.quote.deliverySubtotalCents);
+    if (kind === "accept" && (
+      !route.stops.every((stop) => deliveries.get(stop.requestId)?.currentQuoteVersionId === stop.quoteVersionId) ||
+      currentTotals.some((amount) => amount === null || amount === undefined) ||
+      currentTotals.reduce<number>((sum, amount) => sum + (amount ?? 0), 0) !== route.referenceQuoteTotalCents
+    )) return;
     setBusy(kind);
     setError(null);
     const result =
@@ -98,13 +106,13 @@ export function RouteRunDetail({ routeRunId }: { routeRunId: string }) {
         ? await acceptRouteRun({
             businessAccountId,
             routeRunId,
-            expectedVersion: route.currentVersion,
+            expectedVersion: route.version,
             idempotencyKey: acceptKey.current,
           })
         : await abandonRouteRun({
             businessAccountId,
             routeRunId,
-            expectedVersion: route.currentVersion,
+            expectedVersion: route.version,
             idempotencyKey: abandonKey.current,
           });
     setBusy(null);
@@ -117,23 +125,28 @@ export function RouteRunDetail({ routeRunId }: { routeRunId: string }) {
   }
 
   async function revise(requestIds: string[]) {
-    if (!route || route.state !== "draft" || busy) return;
+    if (!route || route.state !== "draft" || busy || route.version !== route.currentVersion) return;
     setBusy("revise");
     setError(null);
+    setDeliveries(new Map());
     const result = await saveRouteRunDraft({
       businessAccountId,
       routeRunId,
-      expectedVersion: route.currentVersion,
+      expectedVersion: route.version,
       idempotencyKey: uuid(),
       title: route.title,
       requestIds,
     });
-    setBusy(null);
     if (isApiFailure(result)) {
+      setBusy(null);
       setError(withReference(result));
       return;
     }
+    const loaded = await loadStopDetails(result.value.routeRun, businessAccountId);
+    setDeliveries(loaded.details);
+    setError(loaded.error);
     setRoute(result.value.routeRun);
+    setBusy(null);
   }
 
   async function moveStop(index: number, delta: -1 | 1) {
@@ -151,6 +164,10 @@ export function RouteRunDetail({ routeRunId }: { routeRunId: string }) {
   if (!route) return null;
 
   const stale = route.stops.filter((s) => s.stale).length;
+  const detailsReady = route.stops.every((stop) =>
+    deliveries.get(stop.requestId)?.currentQuoteVersionId === stop.quoteVersionId
+  ) && route.stops.every((stop) => deliveries.get(stop.requestId)?.quote.deliverySubtotalCents != null) &&
+    route.stops.reduce((sum, stop) => sum + (deliveries.get(stop.requestId)?.quote.deliverySubtotalCents ?? 0), 0) === route.referenceQuoteTotalCents;
   const activeAccount = accounts.find((account) => account.businessAccountId === businessAccountId);
   const mayWrite = !!activeAccount && ["owner", "manager", "dispatcher"].includes(activeAccount.role);
   const stateLabel = route.state === "accepted" ? "Accepted" : route.state === "abandoned" ? "Archived" : "Draft";
@@ -179,6 +196,11 @@ export function RouteRunDetail({ routeRunId }: { routeRunId: string }) {
               Refresh or rebuild the affected delivery before accepting this Route Run.
             </Alert>
           ) : null}
+          {route.state === "draft" && (!detailsReady || route.version !== route.currentVersion) ? (
+            <Alert tone="warning" title="Review the current estimates">
+              The displayed stop details are incomplete or no longer match this stop-set version. Refresh the stop set and review every estimate before accepting.
+            </Alert>
+          ) : null}
           {route.state === "accepted" ? (
             <Alert tone="info" title="Stop set frozen">
               These child deliveries are now claimed by this Route Run and cannot be submitted or changed independently. Payment, booking, driver reservation and pickup have not started.
@@ -191,19 +213,20 @@ export function RouteRunDetail({ routeRunId }: { routeRunId: string }) {
           ) : null}
           {route.state === "draft" && mayWrite ? (
             <Stack gap={2}>
+              <Text size="sm">Accepting approves each displayed delivery estimate and their combined total for later merchant payment. You are not charged now.</Text>
               <Cluster gap={3}>
                 <Button
                   variant="primary"
                   loading={busy === "accept"}
-                  disabled={busy !== null || stale > 0}
+                  disabled={busy !== null || stale > 0 || !detailsReady || route.version !== route.currentVersion}
                   onClick={() => void act("accept")}
                 >
-                  Accept stop set
+                  Approve estimates and accept stops
                 </Button>
                 <Button
                   variant="secondary"
                   loading={busy === "revise"}
-                  disabled={busy !== null}
+                  disabled={busy !== null || route.version !== route.currentVersion}
                   onClick={() => void revise(route.stops.map((stop) => stop.requestId))}
                 >
                   Refresh stop set
@@ -211,7 +234,7 @@ export function RouteRunDetail({ routeRunId }: { routeRunId: string }) {
                 <Button
                   variant="ghost"
                   loading={busy === "abandon"}
-                  disabled={busy !== null}
+                  disabled={busy !== null || route.version !== route.currentVersion}
                   onClick={() => void act("abandon")}
                 >
                   Archive draft
@@ -268,7 +291,9 @@ export function RouteRunDetail({ routeRunId }: { routeRunId: string }) {
               <Stack gap={2}>
                 <Text>{delivery?.recipientName || "Recipient name not provided"}</Text>
                 <Text size="sm" muted>{delivery?.recipientEmail || "Recipient email not available"}</Text>
-                {delivery ? <Text size="sm">Estimate: {formatCents(delivery.quote.deliverySubtotalCents)}</Text> : null}
+                {delivery?.currentQuoteVersionId === stop.quoteVersionId ? (
+                  <Text size="sm">Estimate: {formatCents(delivery.quote.deliverySubtotalCents)}</Text>
+                ) : <Text size="sm">Estimate needs refresh</Text>}
                 <Link href={`/app/business/deliveries/${stop.requestId}`} className={buttonClassName({ size: "sm" })}>
                   Open delivery
                 </Link>

@@ -173,6 +173,28 @@ try {
   refuses("accepted child cannot be directly changed",
     `update public.couranr_delivery_requests set readiness_state='ready' where id='${a.requestId}'`,
     "route_child_claimed");
+
+  // A save replay may return its historical version alongside a newer current
+  // generation. The acceptance CAS must use the version the merchant actually
+  // saw, never the newer currentVersion attached to that historical view.
+  const replayA = await child({ marker: "replay-a" });
+  const replayB = await child({ marker: "replay-b" });
+  const replayRoute = randomUUID();
+  const firstSaveKey = randomUUID();
+  one(routeSave({ business: biz, actor: owner, route: replayRoute,
+    key: firstSaveKey, children: [replayA.requestId, replayB.requestId] }));
+  one(routeSave({ business: biz, actor: owner, route: replayRoute,
+    version: 1, children: [replayB.requestId, replayA.requestId] }));
+  const historicalReplay = JSON.parse(one(routeSave({ business: biz, actor: owner,
+    route: replayRoute, key: firstSaveKey, children: [replayA.requestId, replayB.requestId] })));
+  check("historical save replay exposes displayed and current generations separately",
+    [historicalReplay.version, historicalReplay.currentVersion], [1, 2]);
+  refuses("historical displayed generation cannot approve a newer stop set",
+    routeAccept({ business: biz, actor: owner, route: replayRoute, version: historicalReplay.version, key: randomUUID() }),
+    "route_version_conflict");
+  check("current reviewed generation can be accepted",
+    JSON.parse(one(routeAccept({ business: biz, actor: owner, route: replayRoute, version: 2, key: randomUUID() }))).acceptedVersion, 2);
+
   // Archive is separate from accepted cancellation and leaves children unclaimed.
   const c = await child({ marker: "archive-c", value: 5000 });
   const d = await child({ marker: "archive-d", value: 5000 });
