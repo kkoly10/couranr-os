@@ -722,6 +722,7 @@ declare
   v_action integer;
   v_pending integer;
   v_released integer;
+  v_item record;
 begin
   perform private.couranr_require_route_checkout_member(p_business_account_id,p_actor_user_id);
   select * into v_settlement from public.couranr_route_run_settlements
@@ -764,6 +765,24 @@ begin
 
   v_before:=v_settlement.settlement_state;
   v_target:=case
+    -- A status refresh is not the Route capture coordinator. Partial capture
+    -- is normal while sequenced child captures are still progressing; only
+    -- verified failure/terminal evidence forces recovery. The dedicated
+    -- funding command checks every delivery before declaring execution-ready.
+    when v_before in ('ready_for_execution','captured') then v_before
+    when v_before='capture_pending' then
+      case
+        when v_failed>0 or v_released>0 or exists(
+          select 1 from public.couranr_route_run_settlement_items i
+          join public.couranr_payment_events pe on pe.obligation_id=i.obligation_id
+          where i.settlement_id=v_settlement.id
+            and pe.outcome='applied'
+            and pe.event_type in ('couranr.capture.failed',
+              'couranr.capture.terminal_failed','couranr.capture.terminal_cancelled')
+        ) then 'recovery_required'
+        when v_pending>0 or v_authorized+v_captured=v_total then 'capture_pending'
+        else 'recovery_required'
+      end
     -- A Route in recovery must never be silently re-armed by a status read.
     -- After every outstanding hold is released it can settle as failed; any
     -- remaining authorized/captured child still requires explicit recovery.
@@ -800,6 +819,22 @@ begin
       jsonb_build_object('from',v_before,'to',v_target,
         'authorized',v_authorized,'captured',v_captured,'failed',v_failed,'actionRequired',v_action)
     );
+  end if;
+  if v_target='recovery_required' and v_before is distinct from v_target then
+    for v_item in select i.request_id,i.sequence,p.id as plan_id,d.id as delivery_id
+      from public.couranr_route_run_settlement_items i
+      left join public.couranr_service_plans p
+        on p.request_id=i.request_id and p.plan_state='confirmed'
+      left join public.couranr_deliveries d on d.request_id=i.request_id
+      where i.settlement_id=v_settlement.id order by i.sequence
+    loop
+      perform public.couranr_open_automation_exception(
+        v_item.request_id,'commercial','route_settlement_recovery_required',
+        jsonb_build_object('routeRunId',v_settlement.route_run_id,
+          'settlementId',v_settlement.id,'sequence',v_item.sequence,
+          'capturedChildCount',v_captured,'authorizedChildCount',v_authorized),
+        v_item.plan_id,v_item.delivery_id);
+    end loop;
   end if;
   return private.couranr_route_settlement_view(v_settlement.id);
 end
@@ -852,7 +887,8 @@ begin
          select 1 from public.couranr_route_run_settlement_items i
          where i.settlement_id=v_settlement.id and i.obligation_id=p_obligation_id
            and (exists(select 1 from public.couranr_service_plans p
-                        where p.request_id=i.request_id)
+                        where p.request_id=i.request_id
+                          and p.plan_source<>'route_run')
              or exists(select 1 from public.couranr_deliveries d
                         where d.request_id=i.request_id))
        ) then

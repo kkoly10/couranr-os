@@ -393,7 +393,7 @@ export async function releaseKnownRouteHolds(params: {
       p_obligation_id: item.obligationId,
       p_actor_user_id: params.actorUserId,
       p_expected_version: item.obligationVersion,
-      p_reason: "Route checkout could not authorize every delivery before capture",
+      p_reason: "Route settlement recovery: release of an uncaptured child authorization",
     });
     if (begun.ok === false) return begun;
     if (!record(begun.value) || !["applied", "ignored"].includes(String(begun.value.outcome))) {

@@ -265,6 +265,12 @@ begin
     ) values(v_settlement.id,p_actor_user_id,'recovery_required',
       jsonb_build_object('reason','route_resource_unavailable',
         'authorizedChildCount',v_authorized));
+    perform public.couranr_open_automation_exception(
+      i.request_id,'planning','route_resource_unavailable',
+      jsonb_build_object('routeRunId',v_route.id,'settlementId',v_settlement.id,
+        'sequence',i.sequence,'authorizedChildCount',v_authorized))
+      from public.couranr_route_run_settlement_items i
+      where i.settlement_id=v_settlement.id;
     return jsonb_build_object('outcome','unavailable',
       'reason','no_compatible_route_resource','settlementState','recovery_required');
   end if;

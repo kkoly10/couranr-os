@@ -64,6 +64,7 @@
     "test:rr003-route-resource": "node e2e/disposable/routeRunResource.mjs",
     "test:rr003-route-readiness": "node e2e/disposable/routeRunPickupReadiness.mjs",
     "test:rr003-route-plans": "node e2e/disposable/routeRunServicePlans.mjs",
+    "test:rr003-route-capture": "node e2e/disposable/routeRunCaptureGate.mjs",
     "test:problem-audience": "node e2e/disposable/customerProblemAudience.mjs",
     "test:credit-settlement": "node e2e/disposable/creditSettlement.mjs",
     "test:rollback-guards": "node e2e/disposable/rollbackGuards.mjs",

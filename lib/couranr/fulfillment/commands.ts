@@ -287,7 +287,8 @@ export async function capturePayment(params: {
     requestId: params.requestId,
     businessAccountId: params.businessAccountId,
   });
-  if (!isFulfillmentFailure(already) && already.value.delivery) {
+  if (isFulfillmentFailure(already)) return already;
+  if (already.value.delivery) {
     return {
       ok: true,
       value: {
@@ -331,9 +332,17 @@ export async function capturePayment(params: {
   });
   if (isFulfillmentFailure(begun)) return begun;
 
-  const ob = begun.value;
+  return captureBegunObligation(op, params.requestId, begun.value);
+}
+
+/** The single Stripe capture/reconcile/conversion path for ordinary and Route children. */
+async function captureBegunObligation(
+  op: string,
+  requestId: string,
+  ob: Record<string, any>
+): Promise<FulfillmentResult<CaptureOutcome>> {
   if (ob.payment_state === "captured") {
-    return convertAfterCapture(op, params.requestId, ob as any);
+    return convertAfterCapture(op, requestId, ob as any);
   }
   /*
    * Lost the race to a concurrent caller between the check above and here.
@@ -442,7 +451,62 @@ export async function capturePayment(params: {
     });
   }
 
-  return convertAfterCapture(op, params.requestId, { id: ob.id, payment_state: "captured" });
+  return convertAfterCapture(op, requestId, { id: ob.id, payment_state: "captured" });
+}
+
+/**
+ * Route-owned admission uses a separate SQL wrapper but the SAME canonical
+ * provider capture, verification and delivery-conversion implementation.
+ * Its caller must supply authenticated owner/manager identity; SQL verifies
+ * exact accepted Route membership, sequence, plan and committed resource.
+ */
+export async function capturePaymentForRoute(params: {
+  requestId: string;
+  businessAccountId: string;
+  actorUserId: string;
+  routeRunId: string;
+  obligationId: string;
+}): Promise<FulfillmentResult<CaptureOutcome>> {
+  const op = "capturePaymentForRoute";
+  const membership = await callRpc<any>(op, "couranr_read_route_run_settlement", {
+    p_business_account_id: params.businessAccountId,
+    p_actor_user_id: params.actorUserId,
+    p_route_run_id: params.routeRunId,
+  });
+  if (isFulfillmentFailure(membership)) return membership;
+  const matching = Array.isArray(membership.value?.items)
+    ? membership.value.items.some((item: any) =>
+        item.requestId === params.requestId && item.obligationId === params.obligationId)
+    : false;
+  if (!matching) {
+    return fail({ operation: op, code: "not_permitted", detail: "route_child_mismatch" });
+  }
+  const already = await getCanonicalDelivery({
+    requestId: params.requestId,
+    businessAccountId: params.businessAccountId,
+  });
+  if (isFulfillmentFailure(already)) return already;
+  if (already.value.delivery) {
+    if (already.value.delivery.payment_obligation_id !== params.obligationId) {
+      return fail({ operation: op, code: "conflict", detail: "route_obligation_delivery_mismatch" });
+    }
+    return { ok: true, value: {
+      outcome: "captured", obligationId: params.obligationId,
+      paymentState: "captured", deliveryId: String(already.value.delivery.id),
+    } };
+  }
+  const begun = await callRpc<Record<string, any>>(op, "couranr_begin_route_child_capture", {
+    p_business_account_id: params.businessAccountId,
+    p_actor_user_id: params.actorUserId,
+    p_route_run_id: params.routeRunId,
+    p_obligation_id: params.obligationId,
+  });
+  if (isFulfillmentFailure(begun)) return begun;
+  if (String(begun.value.request_id) !== params.requestId
+      || String(begun.value.id) !== params.obligationId) {
+    return fail({ operation: op, code: "conflict", detail: "route_capture_begin_mismatch" });
+  }
+  return captureBegunObligation(op, params.requestId, begun.value);
 }
 
 /**

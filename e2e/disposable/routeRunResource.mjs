@@ -126,6 +126,11 @@ try{
   check("second Route cannot steal the first resource",noResource.outcome,"unavailable");
   check("resource-unavailable Route remains financially blocked",
     noResource.settlementState,"recovery_required");
+  check("resource-unavailable children enter the Operations planning queue",
+    one(`select count(*) from public.couranr_automation_exceptions e
+      where e.request_id in ('${second.a.requestId}','${second.b.requestId}')
+        and e.exception_stage='planning' and e.exception_state='open'
+        and e.reason='route_resource_unavailable'`),"2");
   check("settlement refresh cannot silently re-arm unavailable Route",
     JSON.parse(one(`select public.couranr_sync_route_run_settlement(
       '${biz}','${owner}','${second.route}',false)`)).state,"recovery_required");
