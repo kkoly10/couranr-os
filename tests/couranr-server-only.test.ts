@@ -116,6 +116,7 @@ describe("server-only modules are unreachable from client code", () => {
       // the boundary — service_role bypasses RLS, so a browser holding this
       // would read any business's money.
       "lib/couranr/billing/commands.ts",
+      "lib/couranr/billing/paymentMethod.ts",
       // INT-002. Composes Consumer Smart Intake over the shared intake
       // commands (service-role) and reads the kill switch. A bundle reaching
       // it would ship the write path for a guest's intake evidence.
@@ -411,6 +412,7 @@ describe("canonical server routes do not import the browser client", () => {
       "app/api/couranr/me/team/[memberId]/route.ts",
       "app/api/couranr/me/team/route.ts",
       "app/api/couranr/me/workspace/route.ts",
+      "app/api/couranr/merchant/billing/payment-method/route.ts",
       "app/api/couranr/merchant/billing/route.ts",
       "app/api/couranr/merchant/customers/route.ts",
       "app/api/couranr/merchant/deliveries/[id]/pickup-code/route.ts",

@@ -162,23 +162,15 @@ export function chargeRecordState(paymentState: string | null | undefined): Char
 /**
  * The state of the merchant's stored payment method.
  *
- * There is exactly one value this can take today, and it is not a placeholder
- * for a feature that is nearly done — nothing in this system has ever stored a
- * payment method. The type has a second member so that adding storage later
- * changes a return value rather than a type.
+ * A default is recognized only after Couranr re-reads a successful Stripe
+ * SetupIntent and its customer-owned PaymentMethod and persists that evidence.
  */
 export const PAYMENT_METHOD_STATES = ["none_on_file", "default_on_file"] as const;
 export type PaymentMethodState = (typeof PAYMENT_METHOD_STATES)[number];
 
-/**
- * Always `none_on_file`.
- *
- * Deliberately a FUNCTION rather than a constant, so the screen reads it the
- * same way it will read a real lookup, and so this file is the single place
- * that has to change when saved methods ship.
- */
-export function paymentMethodState(): PaymentMethodState {
-  return "none_on_file";
+/** Never infer a saved card from an in-progress SetupIntent. */
+export function paymentMethodState(verifiedMethodOnFile: boolean): PaymentMethodState {
+  return verifiedMethodOnFile ? "default_on_file" : "none_on_file";
 }
 
 /**
@@ -201,15 +193,6 @@ export type BillingGap = {
 };
 
 export const BILLING_GAPS: readonly BillingGap[] = [
-  {
-    id: "saved_payment_method",
-    label: "Saved payment method",
-    merchantCopy:
-      "Couranr does not store a payment method yet. You confirm payment on each delivery as you authorize it.",
-    blockedBy:
-      "Saving a method for reuse requires a Stripe Customer and a SetupIntent, with the customer id persisted here. Neither exists; the Stripe server SDK is frozen at 15.x pending characterization tests.",
-    kind: "unbuilt",
-  },
   {
     id: "downloadable_receipt",
     label: "Downloadable receipt",

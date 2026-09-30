@@ -12,6 +12,8 @@ const PROTECTED = [
   "couranr_payment_obligations",
   "couranr_payment_events",
   "couranr_payment_refunds",
+  "couranr_business_payment_profiles",
+  "couranr_business_payment_setup_attempts",
   "couranr_service_plans",
   "couranr_deliveries",
   "couranr_delivery_events",

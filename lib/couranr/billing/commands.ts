@@ -106,6 +106,13 @@ export async function listBillingRecords(params: {
   if (isBillingFailure(hostedIdsResult)) return hostedIdsResult;
   const hostedRequestIds = hostedIdsResult.value;
 
+  const profile = await supabaseAdmin.from("couranr_business_payment_profiles")
+    .select("default_payment_method_id,stripe_customer_livemode")
+    .eq("business_account_id", params.businessAccountId).maybeSingle();
+  if (profile.error) {
+    return fail({ operation: op, code: "internal", detail: { lookup: "business payment profile", error: profile.error } });
+  }
+
   const direct = await supabaseAdmin
     .from("couranr_payment_obligations")
     .select(
@@ -305,7 +312,10 @@ export async function listBillingRecords(params: {
     ok: true,
     value: {
       businessAccountId: params.businessAccountId,
-      paymentMethod: paymentMethodState(),
+      paymentMethod: paymentMethodState(
+        !!profile.data?.default_payment_method_id &&
+        profile.data.stripe_customer_livemode === (process.env.VERCEL_ENV === "production"),
+      ),
       records,
       totalChargedCents: totalChargedCents(
         totalRows.map((row) => ({

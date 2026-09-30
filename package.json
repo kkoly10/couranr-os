@@ -59,6 +59,7 @@
     "test:route-run-foundation": "node e2e/disposable/routeRunFoundation.mjs",
     "test:route-run-acceptance": "node e2e/disposable/routeRunAcceptance.mjs",
     "test:route-run-merchant": "node e2e/disposable/routeRunMerchant.mjs",
+    "test:rr003-business-payment": "node e2e/disposable/businessPaymentMethod.mjs",
     "test:problem-audience": "node e2e/disposable/customerProblemAudience.mjs",
     "test:credit-settlement": "node e2e/disposable/creditSettlement.mjs",
     "test:rollback-guards": "node e2e/disposable/rollbackGuards.mjs",

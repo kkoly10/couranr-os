@@ -277,9 +277,9 @@ export function verifyFidelity() {
        table added or dropped without anyone noticing shows up, and `>=` would
        make a DROP invisible. It is its own positive control — 65 and 67 both
        fail — so the cost of that strictness is this comment, every time. */
-    ["66 couranr_ tables (including driver portrait/feedback evidence)",
+    ["68 couranr_ tables (including RR-003 Business payment method evidence)",
       () => one(`select count(*) from pg_class c join pg_namespace n on n.oid=c.relnamespace
-                 where n.nspname='public' and c.relkind='r' and c.relname like 'couranr%'`) === "66"],
+                 where n.nspname='public' and c.relkind='r' and c.relname like 'couranr%'`) === "68"],
     ["the merchant-customer tables exist and are service_role-only",
       () =>
         one(`select has_table_privilege('service_role','public.merchant_customers','INSERT')

@@ -241,18 +241,13 @@ describe("cents are formatted as cents, never as floats", () => {
   });
 });
 
-describe("no payment method is stored, and the screen says so", () => {
-  it("paymentMethodState is always none_on_file today", () => {
-    expect(paymentMethodState()).toBe("none_on_file");
+describe("saved card truth", () => {
+  it("only verified stored evidence may produce default_on_file", () => {
+    expect(paymentMethodState(false)).toBe("none_on_file");
+    expect(paymentMethodState(true)).toBe("default_on_file");
   });
 
-  it("nothing in the repository stores a Stripe customer or a SetupIntent", () => {
-    /**
-     * The claim behind the "no saved payment method" state. Saving a method
-     * for reuse needs a Stripe Customer AND a SetupIntent with the customer id
-     * persisted here; if either ever appears, this state stops being
-     * universally true and the screen must stop asserting it.
-     */
+  it("the original one-off delivery payment path remains unchanged", () => {
     const migrations = readFileSync(
       path.join(ROOT, "supabase/migrations/20260731230000_couranr_payment_authorization.sql"),
       "utf8"
@@ -264,11 +259,10 @@ describe("no payment method is stored, and the screen says so", () => {
 });
 
 describe("the gaps are cited, not editorial", () => {
-  it("names all three, each with merchant copy and a reason", () => {
+  it("names the remaining gaps, each with merchant copy and a reason", () => {
     expect(BILLING_GAPS.map((g) => g.id).sort()).toEqual([
       "downloadable_receipt",
       "refunds_and_credits",
-      "saved_payment_method",
     ]);
     for (const g of BILLING_GAPS) {
       expect(g.label, g.id).toBeTruthy();

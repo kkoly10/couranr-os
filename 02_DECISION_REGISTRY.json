@@ -4039,7 +4039,156 @@
         "V1 acceptance refuses any child above 50 lb and refuses mixed pickup timing across stops."
       ],
       "decided_by": "owner",
-      "decided_at_utc": "2026-09-26T08:03:00Z"
+      "decided_at_utc": "2026-09-26T08:03:00Z",
+      "extended_by": [
+        "RR-003"
+      ]
+    },
+    {
+      "id": "RR-003",
+      "category": "business route run settlement and route-owned resource reservation",
+      "decision": "Route Run V1 checkout uses one verified saved Business card but preserves one canonical payment obligation per child delivery. An owner or manager explicitly confirms the exact accepted Route checkout; Couranr then authorizes every child obligation in stable stop order, fails closed on unknown provider outcomes, reserves one compatible driver/vehicle pair for the whole Route before capture, and captures each child only under the existing recoverable payment workflow. No Route may move physically until every child is captured and canonical deliveries exist. The Route, not the first child, owns the driver/vehicle resource until RR-004 reaches terminal custody.",
+      "extends": "RR-002",
+      "value": {
+        "payment_method": {
+          "provider": "Stripe",
+          "setup_authority": [
+            "owner",
+            "manager"
+          ],
+          "checkout_authority": [
+            "owner",
+            "manager"
+          ],
+          "explicit_off_session_consent": true,
+          "save_does_not_charge": true,
+          "browser_receives": "SetupIntent client secret during setup; never reusable PaymentMethod id"
+        },
+        "settlement": {
+          "child_accounting": "one existing canonical payment obligation per child quote; never one aggregate PaymentIntent",
+          "checkout_confirmation": "separate from Route acceptance and bound to exact accepted version/quotes",
+          "authorization_order": "stable stop sequence",
+          "unknown_outcome": "provider reconciliation only; never blind-create/retry another payment",
+          "resource_order": "all authorizations -> one Route resource reservation -> child captures -> canonical child deliveries",
+          "partial_capture": "recovery_required; no physical execution until provider recovery/compensation converges"
+        },
+        "resource_owner": {
+          "scope": "one driver + one compatible vehicle for the Route",
+          "aggregate_capacity": "server-derived from all child shipment evidence",
+          "ordinary_dispatch_exclusion": true,
+          "release": "Route terminal only; intermediate child completion cannot make resource available"
+        }
+      },
+      "status": "decided",
+      "owner_approved": true,
+      "owner_approved_on": "2026-09-30",
+      "authority_file": "02_DECISION_REGISTRY.json",
+      "authority_section": "RR-003.value — owner-approved continuation to complete Business multi-stop",
+      "affected_routes": [
+        "/app/business/settings/billing",
+        "/app/business/routes/[id]"
+      ],
+      "affected_screen_ids": [
+        "MER-016",
+        "MER-019"
+      ],
+      "affected_database_objects": [
+        "couranr_business_payment_profiles",
+        "couranr_business_payment_setup_attempts",
+        "couranr_route_run_settlements",
+        "couranr_route_run_settlement_items",
+        "couranr_route_run_resource_reservations",
+        "couranr_payment_obligations",
+        "couranr_service_plans",
+        "couranr_deliveries"
+      ],
+      "affected_code_paths": [
+        "lib/couranr/billing/**",
+        "lib/couranr/routeRuns/**",
+        "components/couranr/routes/**",
+        "app/api/couranr/merchant/**",
+        "supabase/migrations/**"
+      ],
+      "implementation_phase": "Route Run V1 settlement/resource ownership",
+      "acceptance_criteria": [
+        "Saving/replacing a card alone creates no Route checkout, PaymentIntent, obligation, booking, dispatch or custody.",
+        "Route checkout has immutable confirmation bound to the exact accepted Route version and child Quote Versions.",
+        "Every child keeps its own canonical obligation and provider PaymentIntent identity.",
+        "Any unknown provider outcome blocks progression until reconciliation.",
+        "A compatible Route-level driver/vehicle resource is secured before child capture begins.",
+        "Partial capture can never start physical execution.",
+        "All child deliveries are canonical existing delivery records.",
+        "Route resource remains held across child completions and releases only at terminal Route custody."
+      ],
+      "decided_by": "owner",
+      "decided_at_utc": "2026-09-30T12:36:00Z",
+      "extended_by": [
+        "RR-004"
+      ]
+    },
+    {
+      "id": "RR-004",
+      "category": "business route run shared custody and sequential execution",
+      "decision": "A funded Route Run executes as one driver journey with one common pickup and an immutable ordered list of canonical child deliveries. Every child keeps its own manifest, custody/protection evidence, recipient credential, Help/privacy boundary and proof. The driver/vehicle remain Route-owned across stop completion. One stop failure does not falsify later children; Operations governs continue/return decisions when an exception leaves cargo in custody.",
+      "extends": "RR-003",
+      "value": {
+        "pickup": {
+          "visit_count": 1,
+          "all_children_accounted_before_departure": true,
+          "child_specific_manifest_and_proof": true,
+          "unresolved_missing_child_blocks_departure": true
+        },
+        "assignments": {
+          "same_driver_vehicle_across_children": true,
+          "multiple_active_child_assignments_allowed_only_with_same_active_route_owner": true,
+          "ordinary_one_active_driver_rule_preserved": true
+        },
+        "stops": {
+          "order": "accepted immutable sequence",
+          "execution": "one current stop at a time",
+          "recipient_privacy": "child only",
+          "proof_and_pin": "child scoped",
+          "failure": "explicit Operations continue/return resolution"
+        },
+        "resource_release": "never on intermediate child completion; terminal Route custody only"
+      },
+      "status": "decided",
+      "owner_approved": true,
+      "owner_approved_on": "2026-09-30",
+      "authority_file": "02_DECISION_REGISTRY.json",
+      "authority_section": "RR-004.value — owner-approved continuation to complete Business multi-stop",
+      "affected_routes": [
+        "/app/driver",
+        "/app/business/routes/[id]",
+        "/operations"
+      ],
+      "affected_screen_ids": [],
+      "affected_database_objects": [
+        "couranr_delivery_assignments",
+        "couranr_deliveries",
+        "couranr_delivery_events",
+        "couranr_route_run_executions",
+        "couranr_route_run_resource_reservations"
+      ],
+      "affected_code_paths": [
+        "lib/couranr/driver/**",
+        "lib/couranr/dispatch/**",
+        "lib/couranr/routeRuns/**",
+        "components/couranr/driver/**",
+        "components/couranr/routes/**",
+        "supabase/migrations/**"
+      ],
+      "implementation_phase": "Route Run V1 custody/sequential execution",
+      "acceptance_criteria": [
+        "Common pickup is one Route visit but every child package is individually accounted for under its own protection policy.",
+        "No Route departs while any planned child is missing or unresolved.",
+        "Same Route driver/vehicle may hold multiple active child assignments without weakening non-Route one-active-driver rule.",
+        "Completing Stop N cannot make driver/vehicle available while another Route child remains active.",
+        "Recipient tracking, credentials, Help and proof remain child-private.",
+        "Final Route resource release occurs only after every child has terminal custody, including required returns."
+      ],
+      "decided_by": "owner",
+      "decided_at_utc": "2026-09-30T12:36:00Z"
     },
     {
       "id": "FND-006",
@@ -4418,7 +4567,9 @@
       },
       "implementation_phase": "Pricing V2 closure",
       "note": "RR-002 narrowly amends merchant approval authority: accepted Route Run membership approves its exact child quote IDs only while that Route remains accepted; cancelled Route history is not current approval. Accepted still is not paid, authorized, booked, dispatched or custody. An earlier revision confused COMMAND AND ROW EXISTENCE with payer approval. Approval is DERIVED from immutable evidence rather than duplicated into a flag.",
-      "extended_by": ["RR-002"]
+      "extended_by": [
+        "RR-002"
+      ]
     },
     {
       "authority_file": "docs/couranr-mvp/PRODUCT_SPEC.md",

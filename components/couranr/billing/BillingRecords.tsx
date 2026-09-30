@@ -2,7 +2,6 @@
 
 import * as React from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import {
   Alert,
   Badge,
@@ -24,6 +23,7 @@ import {
   type BusinessAccountOption,
 } from "@/components/couranr/requests/client";
 import { memberMay } from "@/lib/couranr/settings/permissions";
+import { SavedBusinessCard } from "./SavedBusinessCard";
 import {
   CHARGE_RECORD_DESCRIPTIONS,
   CHARGE_RECORD_LABELS,
@@ -43,11 +43,8 @@ import {
  * delivery, the merchant owns the product price and any refund of it. Every
  * total on this page is a DELIVERY charge and says so.
  *
- * Two of the four registry-required states are reachable and rendered from
- * real rows — no payment method, and payment failed. The other two are named
- * as gaps with what a merchant should do instead, rather than drawn as
- * controls that do nothing. `lib/couranr/billing/records.ts` carries the
- * citation for each.
+ * Charge records remain read-only. RR-003a's saved-card control is a separate
+ * server-owned SetupIntent flow, not permission to refund or mutate a charge.
  */
 
 function alertTone(state: ChargeRecordState): "info" | "success" | "warning" | "danger" {
@@ -62,15 +59,33 @@ function fetchBilling(businessAccountId: string) {
 }
 
 export function BillingRecords() {
-  const router = useRouter();
+  const setupReturn = React.useRef<{ businessAccountId: string; attemptId: string } | null>(null);
+  const [returnInfo, setReturnInfo] = React.useState<{ businessAccountId: string; attemptId: string } | null>(null);
 
   const [accounts, setAccounts] = React.useState<BusinessAccountOption[] | null>(null);
   const [accountsError, setAccountsError] = React.useState<ApiFailure | null>(null);
+  const [accountsReloadKey, setAccountsReloadKey] = React.useState(0);
   const [businessAccountId, setBusinessAccountId] = React.useState("");
 
   const [view, setView] = React.useState<BillingView | null>(null);
   const [viewError, setViewError] = React.useState<ApiFailure | null>(null);
   const [reloadKey, setReloadKey] = React.useState(0);
+
+  React.useEffect(() => {
+    // Stripe may append a client secret on the 3DS return. Scrub it at page
+    // entry, even when authentication/account loading fails before the card
+    // control could mount. Only the server-stored attempt is payment authority.
+    const url = new URL(window.location.href);
+    const businessAccountId = url.searchParams.get("setupBusinessAccountId");
+    const attemptId = url.searchParams.get("setupAttemptId");
+    if (businessAccountId && attemptId) setupReturn.current = { businessAccountId, attemptId };
+    if (["setupBusinessAccountId", "setupAttemptId", "setup_intent", "setup_intent_client_secret"]
+      .some((key) => url.searchParams.has(key))) {
+      for (const key of ["setupBusinessAccountId", "setupAttemptId", "setup_intent", "setup_intent_client_secret"])
+        url.searchParams.delete(key);
+      window.history.replaceState(window.history.state, "", url.pathname + url.search + url.hash);
+    }
+  }, []);
 
   React.useEffect(() => {
     let cancelled = false;
@@ -82,14 +97,23 @@ export function BillingRecords() {
         return;
       }
       setAccounts(r.value.businessAccounts);
+      setReturnInfo(setupReturn.current);
       if (r.value.businessAccounts.length >= 1) {
-        setBusinessAccountId(r.value.businessAccounts[0].businessAccountId);
+        // Stripe's 3DS return may reopen this page after a different workspace
+        // was selected. The URL names only a candidate; the API still checks
+        // membership and the stored SetupIntent before saving anything.
+        const returning = setupReturn.current?.businessAccountId;
+        const selected = r.value.businessAccounts.find((a) => a.businessAccountId === returning);
+        const firstReadable = r.value.businessAccounts.find((a) =>
+          memberMay({ role: a.role, status: "active" }, "billing.read"));
+        setBusinessAccountId(selected?.businessAccountId ?? firstReadable?.businessAccountId ??
+          r.value.businessAccounts[0].businessAccountId);
       }
     });
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [accountsReloadKey]);
 
   React.useEffect(() => {
     if (!businessAccountId) return;
@@ -114,7 +138,9 @@ export function BillingRecords() {
       <ErrorState
         title="We could not check your account"
         body={withReference(accountsError)}
-        action={{ label: "Reload", onClick: () => router.refresh() }}
+        action={{ label: "Reload", onClick: () => {
+          setAccountsError(null); setAccountsReloadKey((key) => key + 1);
+        } }}
       />
     );
   }
@@ -147,38 +173,39 @@ export function BillingRecords() {
   const activeAccount =
     accounts.find((a) => a.businessAccountId === businessAccountId) ?? accounts[0];
   const mayRead = memberMay({ role: activeAccount.role, status: "active" }, "billing.read");
+  const accountSelect = accounts.length > 1 ? (
+    <Card>
+      <CardHeader title="Business account" />
+      <Field label="Viewing" required>
+        {(p) => <Select {...p} value={activeAccount.businessAccountId}
+          onChange={(e) => setBusinessAccountId(e.target.value)}>
+          {accounts.map((a) => <option key={a.businessAccountId} value={a.businessAccountId}>{a.name}</option>)}
+        </Select>}
+      </Field>
+    </Card>
+  ) : null;
 
   if (!mayRead) {
     return (
-      <EmptyState
-        title="You do not have access to billing"
-        body="Billing records are visible to owners, managers and billing contacts. Ask one of them if you need a charge."
-      />
+      <Stack gap={6}>
+        {accountSelect}
+        <EmptyState title="You do not have access to billing"
+          body="Billing records are visible to owners, managers and billing contacts. Ask one of them if you need a charge." />
+      </Stack>
     );
   }
 
   return (
     <Stack gap={6}>
-      {accounts.length > 1 ? (
-        <Card>
-          <CardHeader title="Business account" />
-          <Field label="Viewing" required>
-            {(p) => (
-              <Select
-                {...p}
-                value={activeAccount.businessAccountId}
-                onChange={(e) => setBusinessAccountId(e.target.value)}
-              >
-                {accounts.map((a) => (
-                  <option key={a.businessAccountId} value={a.businessAccountId}>
-                    {a.name}
-                  </option>
-                ))}
-              </Select>
-            )}
-          </Field>
-        </Card>
-      ) : null}
+      {accountSelect}
+
+      <SavedBusinessCard
+        key={activeAccount.businessAccountId}
+        businessAccountId={activeAccount.businessAccountId}
+        mayManage={memberMay({ role: activeAccount.role, status: "active" }, "billing.manage_payment_method")}
+        returnAttemptId={returnInfo?.businessAccountId === activeAccount.businessAccountId
+          ? returnInfo.attemptId : null}
+      />
 
       {viewError ? (
         <ErrorState
@@ -196,21 +223,6 @@ export function BillingRecords() {
 
       {view ? (
         <>
-          {/*
-            Required state: NO PAYMENT METHOD. Universally true today, and
-            said as a fact about how Couranr works rather than as a task the
-            merchant has failed to complete — there is no control anywhere
-            that would let them complete it.
-          */}
-          {view.paymentMethod === "none_on_file" ? (
-            <Alert tone="info" title="No stored payment method">
-              Couranr does not store a payment method yet. For business-paid
-              deliveries, an authorized business user confirms payment on that
-              delivery. Customer-paid deliveries use the customer&apos;s own secure
-              payment link. Nothing is charged until Couranr confirms service.
-            </Alert>
-          ) : null}
-
           <Card>
             <CardHeader
               title="Delivery charges"

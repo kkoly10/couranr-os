@@ -108,6 +108,10 @@ export const SETTINGS_CAPABILITIES = [
    * is the bound this whole module is written to.
    */
   "billing.read",
+  /** Save/replace the Business card used only after a separate checkout confirmation. */
+  "billing.manage_payment_method",
+  /** Confirm a Route Run checkout that may authorize/capture its exact child delivery charges. */
+  "billing.authorize_route",
   /**
    * See and USE the MER-010 presets.
    *
@@ -165,6 +169,8 @@ const MATRIX: Readonly<Record<MemberRole, readonly SettingsCapability[]>> = {
     "activation.request",
     "activation.record_test_delivery",
     "billing.read",
+    "billing.manage_payment_method",
+    "billing.authorize_route",
     "presets.read",
     "presets.write",
     "customers.read",
@@ -183,6 +189,8 @@ const MATRIX: Readonly<Record<MemberRole, readonly SettingsCapability[]>> = {
     "activation.request",
     "activation.record_test_delivery",
     "billing.read",
+    "billing.manage_payment_method",
+    "billing.authorize_route",
     "presets.read",
     "presets.write",
     "customers.read",
