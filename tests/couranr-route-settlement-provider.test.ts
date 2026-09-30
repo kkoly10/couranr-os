@@ -35,15 +35,18 @@ const obligationB = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
 const params = { businessAccountId: business, actorUserId: actor, routeRunId: route };
 const itemA = { sequence: 1, requestId: requestA, quoteVersionId: quoteA,
   obligationId: obligationA, amountCents: 1800, currency: "usd", paymentState: "not_started",
+  deliveryId: null,
   obligationVersion: 1 };
 const itemB = { sequence: 2, requestId: requestB, quoteVersionId: quoteB,
   obligationId: obligationB, amountCents: 2200, currency: "usd", paymentState: "not_started",
+  deliveryId: null,
   obligationVersion: 1 };
 const baseView = {
   settlementId, routeRunId: route, businessAccountId: business,
   state: "pending_authorization", version: 1, confirmedAt: new Date().toISOString(),
   referenceTotalCents: 4000, currency: "usd",
   card: { brand: "visa", last4: "4242" },
+  pickupReadyConfirmed: false,
   uncertainObligationId: null,
   items: [itemA, itemB],
 };
@@ -267,6 +270,33 @@ describe("RR-003b canonical compensation of known holds", () => {
     const result = await releaseKnownRouteHolds(params);
     expect(result.ok).toBe(true);
     expect(mocks.intentRetrieve).toHaveBeenCalledWith(intent.id);
+  });
+
+  it("cancels an abandoned requires-action intent instead of leaving card action open", async () => {
+    const actionView = { ...failedView, items: [
+      { ...failedView.items[0], paymentState: "requires_action" }, failedView.items[1],
+    ] };
+    mocks.rpc.mockImplementation(async (fn: string) => {
+      if (fn === "couranr_read_route_run_settlement") return ok(actionView);
+      if (fn === "couranr_begin_payment_release") return ok({ outcome: "applied" });
+      if (fn === "couranr_complete_payment_release") return ok({ outcome: "applied" });
+      if (fn === "couranr_sync_route_run_settlement") return ok({ ...actionView,
+        state: "authorization_failed", items: [
+          { ...actionView.items[0], paymentState: "cancelled" }, actionView.items[1],
+        ] });
+      throw new Error(`unexpected RPC ${fn}`);
+    });
+    mocks.from.mockReturnValue({
+      select: vi.fn().mockReturnThis(), eq: vi.fn().mockReturnThis(),
+      maybeSingle: vi.fn().mockResolvedValue({ data: {
+        id: obligationA, request_id: requestA, quote_version_id: quoteA,
+        business_account_id: business, provider_payment_intent_id: intent.id,
+        payment_state: "requires_action", version: 2,
+      }, error: null }),
+    });
+    const result = await releaseKnownRouteHolds(params);
+    expect(result.ok).toBe(true);
+    expect(mocks.intentCancel).toHaveBeenCalledWith(intent.id);
   });
 
   it("never releases an unknown outcome or a captured child", async () => {

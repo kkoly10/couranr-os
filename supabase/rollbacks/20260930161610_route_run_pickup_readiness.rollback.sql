@@ -4,6 +4,8 @@
 begin;
 set local lock_timeout='5s';
 set local statement_timeout='90s';
+lock table public.couranr_route_run_settlements,
+  public.couranr_route_run_settlement_events in access exclusive mode;
 do $$ begin
   if exists(select 1 from public.couranr_route_run_settlement_events
     where event_type='pickup_ready_confirmed') then

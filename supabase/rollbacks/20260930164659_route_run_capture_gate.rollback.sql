@@ -3,6 +3,10 @@
 begin;
 set local lock_timeout='5s';
 set local statement_timeout='90s';
+lock table public.couranr_route_run_settlements,
+  public.couranr_route_run_resource_reservations,
+  public.couranr_route_run_settlement_items,
+  public.couranr_payment_obligations in access exclusive mode;
 do $$ begin
   -- Removing the guards after checkout would reopen ordinary child capture or
   -- assignment even if capture has not begun yet. Refuse any Route money state.

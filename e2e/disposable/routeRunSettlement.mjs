@@ -204,5 +204,29 @@ try{
   refuses("semantic rollback refuses checkout history",rollback,"route_settlement_rollback_refuses_semantic_use");
   check("failed rollback preserves settlement",one("select count(*) from public.couranr_route_run_settlements"),"1");
 
+  // Two older stalled checkouts must not monopolize the bounded maintenance
+  // batch while a later capture/recovery checkout needs attention.
+  async function additionalCheckout(marker,state){
+    const left=await child(`${marker}-left`,1800),right=await child(`${marker}-right`,2200);
+    const id=randomUUID();
+    one(`select public.couranr_save_route_run_draft(
+      '${biz}','${owner}','${id}',0,'${randomUUID()}','${marker}',
+      array['${left.requestId}','${right.requestId}']::uuid[])`);
+    one(`select public.couranr_accept_route_run('${biz}','${owner}','${id}',1,'${randomUUID()}')`);
+    one(`select public.couranr_begin_route_run_checkout('${biz}','${owner}','${id}',1,'${randomUUID()}')`);
+    one(`update public.couranr_route_run_settlements set settlement_state='${state}'
+      where route_run_id='${id}'`);
+    return id;
+  }
+  const stuck=await additionalCheckout("rr003b-stuck","recovery_required");
+  const later=await additionalCheckout("rr003b-later","capture_pending");
+  const firstBatch=one("select route_run_id from public.couranr_claim_route_checkout_maintenance(2) order by route_run_id").split("\n");
+  const nextBatch=one("select route_run_id from public.couranr_claim_route_checkout_maintenance(2) order by route_run_id").split("\n");
+  check("bounded maintenance rotates past two older stalled settlements",
+    new Set([...firstBatch,...nextBatch]).has(later),true);
+  check("failed and recovery checkouts remain in the compensating worker queue",
+    new Set([...firstBatch,...nextBatch]).has(route) &&
+      new Set([...firstBatch,...nextBatch]).has(stuck),true);
+
   console.log(`RR-003b Settlement ${checks}/${checks} PASS (disposable PostgreSQL; no provider calls).`);
 }finally{down({quiet:true})}

@@ -204,8 +204,10 @@ async function main() {
 
     const ownerPage = await signIn("rr002-browser-owner@couranr.invalid");
     const providerRequests = [];
+    const stripeRequests = [];
     ownerPage.on("request", (request) => {
       if (request.url().includes("/api/couranr/merchant/places")) providerRequests.push(request.url());
+      if (/https:\/\/(api|js)\.stripe\.com\//.test(request.url())) stripeRequests.push(request.url());
     });
 
     await ownerPage.goto(`${BASE}/app/business/routes`, { waitUntil: "domcontentloaded" });
@@ -238,6 +240,23 @@ async function main() {
       sql(`select count(*) from public.couranr_route_run_claims where route_run_id='${routeId}'`) === "2");
     check("B14", "accepted UI does not claim booking/payment started",
       (await ownerPage.locator("body").innerText()).includes("Acceptance alone does not start payment, booking, driver reservation or pickup"));
+    await ownerPage.getByText("Save a business card first", { exact: true }).waitFor({ state: "visible" });
+    check("B23", "accepted Route requires a saved card before checkout",
+      await ownerPage.getByRole("button", { name: "Confirm Route checkout" }).count() === 0);
+    sql(`insert into public.couranr_business_payment_profiles(
+      business_account_id,stripe_customer_id,stripe_customer_livemode,
+      current_generation,default_payment_method_id,default_setup_intent_id,
+      card_brand,card_last4)
+      values('${business}','cus_rr003browser',false,1,
+        'pm_rr003browser','seti_rr003browser','visa','4242')`);
+    await ownerPage.reload({ waitUntil: "domcontentloaded" });
+    await ownerPage.getByText(/Saved business card: visa ending in 4242/).waitFor({ state: "visible" });
+    check("B24", "merchant sees only saved-card brand and last four",
+      await ownerPage.getByText(/Saved business card: visa ending in 4242/).isVisible());
+    check("B25", "checkout requires explicit separate-charge consent",
+      await ownerPage.getByRole("button", { name: "Confirm Route checkout" }).isDisabled());
+    check("B26", "rendering Route checkout calls no paid Stripe provider",
+      stripeRequests.length === 0, String(stripeRequests.length));
     await ownerPage.screenshot({ path: path.join(SHOTS, "B-detail-accepted.png"), fullPage: true });
 
     const viewerPage = await signIn("rr002-browser-viewer@couranr.invalid", { width: 390, height: 844 });
@@ -253,6 +272,11 @@ async function main() {
     await viewerPage.screenshot({ path: path.join(SHOTS, "B-detail-mobile.png"), fullPage: true });
     check("B18", "viewer cannot cancel accepted Route",
       await viewerPage.getByRole("button", { name: "Cancel accepted Route Run" }).count() === 0);
+    check("B27", "viewer cannot start Route checkout",
+      await viewerPage.getByRole("button", { name: "Confirm Route checkout" }).count() === 0);
+    check("B28", "viewer sees unstarted checkout without a saved-card prompt",
+      await viewerPage.getByText("Checkout has not started.", { exact: true }).isVisible() &&
+      await viewerPage.getByText("Save a business card first", { exact: true }).count() === 0);
     await ownerPage.getByRole("button", { name: "Cancel accepted Route Run" }).click();
     check("B19", "owner sees release and no-payment consequence before cancellation",
       await ownerPage.getByRole("dialog").getByText(/releases the stops back to separate delivery drafts/i).isVisible());
@@ -268,6 +292,53 @@ async function main() {
       await viewerPage.getByText("Route cancelled", { exact: true }).isVisible() &&
       await viewerPage.getByText("Cancelled", { exact: true }).isVisible());
     await ownerPage.screenshot({ path: path.join(SHOTS, "B-detail-cancelled.png"), fullPage: true });
+
+    // Exercise the authenticated checkout confirmation against real SQL while
+    // intercepting ONLY the subsequent provider step. No Stripe call is made.
+    const checkoutA = await child("browser-checkout-one", 1900, "31 Browser Stop Ln");
+    const checkoutB = await child("browser-checkout-two", 2100, "32 Browser Stop Ln");
+    const checkoutRoute = crypto.randomUUID();
+    sql(`select public.couranr_save_route_run_draft(
+      '${business}','${owner}','${checkoutRoute}',0,'${crypto.randomUUID()}',
+      'Checkout browser route',array['${checkoutA.requestId}','${checkoutB.requestId}']::uuid[])`);
+    sql(`select public.couranr_accept_route_run(
+      '${business}','${owner}','${checkoutRoute}',1,'${crypto.randomUUID()}')`);
+    let blockedProviderSteps = 0;
+    await ownerPage.route("**/api/couranr/merchant/route-runs/checkout", async (route) => {
+      const request = route.request();
+      if (request.method() === "POST" && request.postDataJSON()?.action === "advance") {
+        blockedProviderSteps++;
+        await route.fulfill({ status: 409, contentType: "application/json",
+          body: JSON.stringify({ ok: false, code: "conflict",
+            message: "Disposable browser provider step intentionally blocked." }) });
+      } else await route.continue();
+    });
+    await ownerPage.goto(`${BASE}/app/business/routes/${checkoutRoute}?businessAccountId=${business}`,
+      { waitUntil: "domcontentloaded" });
+    await ownerPage.getByRole("button", { name: "Confirm Route checkout" }).waitFor({ state: "visible" });
+    await ownerPage.getByRole("checkbox").check();
+    const beginResponse = ownerPage.waitForResponse((response) =>
+      response.url().includes("/api/couranr/merchant/route-runs/checkout") &&
+      response.request().method() === "POST" &&
+      response.request().postDataJSON()?.action === "begin");
+    const advanceResponse = ownerPage.waitForResponse((response) =>
+      response.url().includes("/api/couranr/merchant/route-runs/checkout") &&
+      response.request().method() === "POST" &&
+      response.request().postDataJSON()?.action === "advance");
+    await ownerPage.getByRole("button", { name: "Confirm Route checkout" }).click();
+    const begun = await beginResponse;
+    await advanceResponse;
+    check("B29", "owner confirmation reaches the server checkout command", begun.ok());
+    check("B30", "checkout stores one settlement and two exact child obligations",
+      sql(`select count(*) from public.couranr_route_run_settlements
+        where route_run_id='${checkoutRoute}'`) === "1" &&
+      sql(`select count(*) from public.couranr_route_run_settlement_items i
+        join public.couranr_route_run_settlements s on s.id=i.settlement_id
+        where s.route_run_id='${checkoutRoute}'`) === "2");
+    check("B31", "provider authorization was intercepted after durable checkout",
+      blockedProviderSteps === 1, String(blockedProviderSteps));
+    check("B32", "confirming checkout without advancing calls no live Stripe endpoint",
+      stripeRequests.length === 0, String(stripeRequests.length));
 
     console.log(`Route Run Merchant Browser: ${passed}/${passed + failed} checks PASS.`);
     if (failed) process.exitCode = 1;

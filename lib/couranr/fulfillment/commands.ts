@@ -475,9 +475,9 @@ export async function capturePaymentForRoute(params: {
   });
   if (isFulfillmentFailure(membership)) return membership;
   const matching = Array.isArray(membership.value?.items)
-    ? membership.value.items.some((item: any) =>
+    ? membership.value.items.find((item: any) =>
         item.requestId === params.requestId && item.obligationId === params.obligationId)
-    : false;
+    : undefined;
   if (!matching) {
     return fail({ operation: op, code: "not_permitted", detail: "route_child_mismatch" });
   }
@@ -495,6 +495,14 @@ export async function capturePaymentForRoute(params: {
       paymentState: "captured", deliveryId: String(already.value.delivery.id),
     } };
   }
+  // Stripe may have captured before the server response or conversion was
+  // lost. A canonical captured obligation needs delivery conversion, not a
+  // second capture admission or provider call.
+  if (matching.paymentState === "captured") {
+    return convertAfterCapture(op, params.requestId, {
+      id: params.obligationId, payment_state: "captured",
+    });
+  }
   const begun = await callRpc<Record<string, any>>(op, "couranr_begin_route_child_capture", {
     p_business_account_id: params.businessAccountId,
     p_actor_user_id: params.actorUserId,
@@ -507,6 +515,54 @@ export async function capturePaymentForRoute(params: {
     return fail({ operation: op, code: "conflict", detail: "route_capture_begin_mismatch" });
   }
   return captureBegunObligation(op, params.requestId, begun.value);
+}
+
+/**
+ * Recover an ambiguous Route child capture by re-reading its EXACT provider
+ * intent through the ordinary canonical capture reconciliation. This never
+ * calls capture again. The settlement membership read is the admission gate;
+ * the browser supplies neither an intent ID nor an obligation generation.
+ */
+export async function reconcileRouteChildCapture(params: {
+  requestId: string;
+  businessAccountId: string;
+  actorUserId: string;
+  routeRunId: string;
+  obligationId: string;
+}): Promise<FulfillmentResult<CaptureOutcome>> {
+  const op = "reconcileRouteChildCapture";
+  const membership = await callRpc<any>(op, "couranr_read_route_run_settlement", {
+    p_business_account_id: params.businessAccountId,
+    p_actor_user_id: params.actorUserId,
+    p_route_run_id: params.routeRunId,
+  });
+  if (isFulfillmentFailure(membership)) return membership;
+  const matching = membership.value?.state === "capture_pending" &&
+    Array.isArray(membership.value?.items)
+    ? membership.value.items.find((item: any) =>
+        item.requestId === params.requestId && item.obligationId === params.obligationId &&
+        item.paymentState === "capture_pending")
+    : undefined;
+  if (!matching) return fail({ operation: op, code: "conflict", detail: "route_child_not_in_capture_recovery" });
+
+  const read = await getObligationForRequest({
+    requestId: params.requestId, businessAccountId: params.businessAccountId,
+  });
+  if (isPaymentFailure(read)) return read;
+  const obligation = read.value.obligation;
+  if (!obligation || obligation.id !== params.obligationId ||
+      obligation.quote_version_id !== matching.quoteVersionId ||
+      obligation.payment_state !== "capture_pending" ||
+      !/^pi_[A-Za-z0-9]+$/.test(String(obligation.provider_payment_intent_id ?? "")) ||
+      !Number.isSafeInteger(obligation.version) || obligation.version < 1) {
+    return fail({ operation: op, code: "conflict", detail: "route_capture_evidence_changed" });
+  }
+  return reconcileCapture({
+    requestId: params.requestId,
+    obligationId: params.obligationId,
+    obligationVersion: obligation.version,
+    paymentIntentId: obligation.provider_payment_intent_id,
+  });
 }
 
 /**

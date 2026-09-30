@@ -40,6 +40,7 @@ create table public.couranr_route_run_settlements (
   version integer not null default 1,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
+  maintenance_checked_at timestamptz,
   constraint couranr_rrsett_route_version_fk
     foreign key(route_run_id,route_version_id)
     references public.couranr_route_run_versions(route_run_id,id),
@@ -67,6 +68,13 @@ create table public.couranr_route_run_settlements (
       and provider_uncertain_obligation_id is null)
   )
 );
+create index couranr_rrsett_maintenance_idx
+  on public.couranr_route_run_settlements(maintenance_checked_at,updated_at)
+  where settlement_state in (
+    'pending_authorization','authorization_required','authorization_unknown',
+    'authorization_failed','authorized','resource_reserved','capture_pending',
+    'recovery_required'
+  );
 
 create table public.couranr_route_run_settlement_items (
   settlement_id uuid not null references public.couranr_route_run_settlements(id),
@@ -151,6 +159,9 @@ returns jsonb language sql stable set search_path='' as $fn$
     'referenceTotalCents',s.reference_total_cents,
     'currency',s.currency,
     'card',jsonb_build_object('brand',s.card_brand,'last4',s.card_last4),
+    'pickupReadyConfirmed',exists(
+      select 1 from public.couranr_route_run_settlement_events e
+      where e.settlement_id=s.id and e.event_type='pickup_ready_confirmed'),
     'providerOutcomeUnknown',(s.settlement_state='authorization_unknown'),
     'uncertainObligationId',s.provider_uncertain_obligation_id,
     'items',coalesce((
@@ -162,10 +173,13 @@ returns jsonb language sql stable set search_path='' as $fn$
         'amountCents',i.amount_cents,
         'currency',i.currency,
         'paymentState',o.payment_state,
+        'deliveryId',d.id,
         'obligationVersion',o.version
       ) order by i.sequence)
       from public.couranr_route_run_settlement_items i
       join public.couranr_payment_obligations o on o.id=i.obligation_id
+      left join public.couranr_deliveries d on d.request_id=i.request_id
+        and d.payment_obligation_id=i.obligation_id
       where i.settlement_id=s.id
     ),'[]'::jsonb)
   )
@@ -1009,6 +1023,35 @@ grant execute on function public.couranr_read_route_run_settlement(uuid,uuid,uui
 grant execute on function public.couranr_begin_route_child_authorization(uuid,uuid,uuid,uuid) to service_role;
 grant execute on function public.couranr_mark_route_settlement_provider_unknown(uuid,uuid,uuid,uuid,text) to service_role;
 grant execute on function public.couranr_sync_route_run_settlement(uuid,uuid,uuid,boolean) to service_role;
+
+-- Rotate maintenance fairly. A permanently ambiguous provider outcome must
+-- not monopolize the bounded cron batch and strand later authorized holds.
+-- This timestamp is scheduling metadata, never payment or commercial truth.
+create function public.couranr_claim_route_checkout_maintenance(p_limit integer default 2)
+returns table(route_run_id uuid,business_account_id uuid)
+language sql security definer set search_path='' as $fn$
+  with candidates as (
+    select s.id
+      from public.couranr_route_run_settlements s
+     where s.settlement_state in (
+       'pending_authorization','authorization_required','authorization_unknown',
+       'authorization_failed','authorized','resource_reserved','capture_pending',
+       'recovery_required'
+     )
+     order by s.maintenance_checked_at nulls first,s.updated_at,s.id
+     limit greatest(1,least(coalesce(p_limit,2),4))
+     for update skip locked
+  ), claimed as (
+    update public.couranr_route_run_settlements s
+       set maintenance_checked_at=clock_timestamp()
+      from candidates c
+     where s.id=c.id
+    returning s.route_run_id,s.business_account_id
+  ) select claimed.route_run_id,claimed.business_account_id from claimed
+$fn$;
+revoke all on function public.couranr_claim_route_checkout_maintenance(integer)
+  from public,anon,authenticated,service_role;
+grant execute on function public.couranr_claim_route_checkout_maintenance(integer) to service_role;
 
 comment on table public.couranr_route_run_settlements is
   'RR-003 checkout saga over separate canonical child obligations. This table is not an aggregate charge and creates no capture/dispatch/custody authority.';

@@ -3,12 +3,20 @@ begin;
 set local lock_timeout='5s';
 set local statement_timeout='90s';
 
+-- Lock before inspecting history: a concurrent checkout must not commit
+-- between the empty-history guard and the destructive DROP below.
+lock table public.couranr_route_run_settlements,
+  public.couranr_route_run_settlement_items,
+  public.couranr_route_run_settlement_events in access exclusive mode;
+
 do $$ begin
   if exists(select 1 from public.couranr_route_run_settlements)
      or exists(select 1 from public.couranr_route_run_settlement_events) then
     raise exception 'route_settlement_rollback_refuses_semantic_use';
   end if;
 end $$;
+
+drop function public.couranr_claim_route_checkout_maintenance(integer);
 
 -- Restore the pre-RR-003b Operations-only hold-release admission before
 -- dropping the Route settlement relations referenced by the forward function.

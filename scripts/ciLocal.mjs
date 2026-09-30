@@ -332,7 +332,7 @@ const STAGES = [
     settle: settleDisposablePorts,
     assert: (out) => {
       const m = out.match(/Route Run Merchant Browser: (\d+)\/(\d+) checks PASS\./);
-      if (!m || m[1] !== "22" || m[2] !== "22") {
+      if (!m || m[1] !== "32" || m[2] !== "32") {
         return "RR-002 requires its complete 22/22 authenticated browser tally";
       }
       if (!out.includes("RR-002 cleanup: Next, gateway, PostgREST and PostgreSQL stopped; disposable build removed.")) {

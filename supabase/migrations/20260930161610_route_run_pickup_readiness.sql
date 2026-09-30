@@ -109,7 +109,17 @@ begin
   end if;
   if exists(select 1 from public.couranr_route_run_settlement_events
     where settlement_id=v_settlement.id and event_type='pickup_ready_confirmed') then
-    raise exception 'route_pickup_already_confirmed' using errcode='CR409';
+    if exists(select 1 from public.couranr_route_run_settlement_items i
+      join public.couranr_delivery_requests q on q.id=i.request_id
+      where i.settlement_id=v_settlement.id
+        and (q.readiness_state<>'ready'
+          or q.current_quote_version_id is distinct from i.quote_version_id)) then
+      raise exception 'route_pickup_replay_child_drift' using errcode='CR409';
+    end if;
+    return jsonb_build_object('outcome','already_ready','routeRunId',v_route.id,
+      'routeVersionId',v_settlement.route_version_id,
+      'childCount',(select count(*) from public.couranr_route_run_settlement_items
+        where settlement_id=v_settlement.id));
   end if;
 
   -- Lock every child before changing any. The SQL transaction rolls the

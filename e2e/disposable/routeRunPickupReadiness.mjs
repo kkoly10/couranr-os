@@ -104,7 +104,12 @@ try {
     one(`select count(*) from public.couranr_delivery_request_events e
       where e.request_id in ('${a.requestId}','${b.requestId}')
         and e.command='mark_delivery_ready'`),"2");
-  refuses("replay cannot silently reaffirm later readiness",ready,"route_pickup_already_confirmed");
+  check("lost-response readiness replay returns the existing commitment",
+    JSON.parse(one(ready)).outcome,"already_ready");
+  check("readiness replay appends no duplicate child audit events",
+    one(`select count(*) from public.couranr_delivery_request_events e
+      where e.request_id in ('${a.requestId}','${b.requestId}')
+        and e.command='mark_delivery_ready'`),"2");
   refuses("standalone child mutation remains blocked",
     `update public.couranr_delivery_requests set readiness_state='not_ready'
       where id='${a.requestId}'`,"route_child_claimed");

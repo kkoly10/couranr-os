@@ -160,6 +160,12 @@ try {
       '${biz}','${owner}','${route}',false)`)).state,"ready_for_execution");
   check("Route has exactly two child deliveries",
     one(`select count(*) from public.couranr_deliveries where route_run_id='${route}'`),"2");
+  const fundedView=JSON.parse(one(`select public.couranr_read_route_run_settlement(
+    '${biz}','${owner}','${route}')`));
+  check("safe settlement projection identifies every canonical child delivery",
+    fundedView.items.filter((item)=>typeof item.deliveryId==="string").length,2);
+  check("safe settlement projection retains merchant pickup readiness evidence",
+    fundedView.pickupReadyConfirmed,true);
   check("no physical assignment or proof was fabricated",
     one("select count(*) from public.couranr_delivery_assignments")+","+
       one("select count(*) from public.couranr_delivery_proofs"),"0,0");

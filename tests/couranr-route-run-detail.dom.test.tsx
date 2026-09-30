@@ -26,6 +26,9 @@ vi.mock("@/components/couranr/routes/client", () => ({
   acceptRouteRun: (...args: unknown[]) => acceptRouteRun(...args),
   cancelAcceptedRouteRun: (...args: unknown[]) => cancelAcceptedRouteRun(...args),
 }));
+vi.mock("@/components/couranr/routes/RouteCheckoutPanel", () => ({
+  RouteCheckoutPanel: () => <div data-testid="route-checkout-panel" />,
+}));
 
 const { RouteRunDetail } = await import("@/components/couranr/routes/RouteRunDetail");
 

@@ -5,31 +5,13 @@ import { assertServerOnly } from "@/lib/couranr/serverOnly";
 import { logServerFailure, newCorrelationId, type PublicErrorCode } from "@/lib/couranr/errors";
 import { applyVerifiedIntentState, isPaymentFailure } from "@/lib/couranr/payments/commands";
 import { intentMetadata, syntheticEventId, type ObligationForIntent } from "@/lib/couranr/payments/stripe";
+import type { RouteSettlementView } from "./types";
 
 assertServerOnly("lib/couranr/routeRuns/settlement.ts");
 
 type Failure = { ok: false; code: PublicErrorCode; correlationId: string; message: string };
 type Result<T> = { ok: true; value: T } | Failure;
-type Item = {
-  sequence: number;
-  requestId: string;
-  quoteVersionId: string;
-  obligationId: string;
-  amountCents: number;
-  paymentState: string;
-  obligationVersion: number;
-};
-export type RouteSettlementView = {
-  settlementId: string;
-  routeRunId: string;
-  state: string;
-  version: number;
-  referenceTotalCents: number;
-  currency: "usd";
-  card: { brand: string; last4: string };
-  uncertainObligationId: string | null;
-  items: Item[];
-};
+type Item = RouteSettlementView["items"][number];
 type Attempt = {
   outcome: "attempt_ready";
   reconcilingUnknown: boolean;
@@ -86,17 +68,20 @@ function view(value: unknown): RouteSettlementView | null {
       !positive(value.referenceTotalCents) || value.currency !== "usd" ||
       !record(value.card) || typeof value.card.brand !== "string" ||
       typeof value.card.last4 !== "string" || !/^\d{4}$/.test(value.card.last4) ||
+      typeof value.pickupReadyConfirmed !== "boolean" ||
       !Array.isArray(value.items) || value.items.length < 2 || value.items.length > 5) return null;
   const items: Item[] = [];
   for (const [index, item] of value.items.entries()) {
     if (!record(item) || item.sequence !== index + 1 || !uuid(item.requestId) ||
         !uuid(item.quoteVersionId) || !uuid(item.obligationId) ||
         !positive(item.amountCents) || typeof item.paymentState !== "string" ||
+        !(item.deliveryId === null || uuid(item.deliveryId)) ||
         !positive(item.obligationVersion) || item.currency !== "usd") return null;
     items.push({
       sequence: index + 1, requestId: item.requestId,
       quoteVersionId: item.quoteVersionId, obligationId: item.obligationId,
       amountCents: item.amountCents, paymentState: item.paymentState,
+      deliveryId: item.deliveryId as string | null,
       obligationVersion: item.obligationVersion,
     });
   }
@@ -106,6 +91,7 @@ function view(value: unknown): RouteSettlementView | null {
     state: value.state, version: value.version,
     referenceTotalCents: value.referenceTotalCents, currency: "usd",
     card: { brand: value.card.brand, last4: value.card.last4 },
+    pickupReadyConfirmed: value.pickupReadyConfirmed,
     uncertainObligationId: uncertain as string | null, items,
   };
 }
@@ -361,7 +347,7 @@ export async function releaseKnownRouteHolds(params: {
       "The Route's payment outcome needs review before any hold can be released.", "conflict");
   }
   for (const original of current.value.items) {
-    if (original.paymentState !== "authorized") continue;
+    if (!["authorized", "requires_action"].includes(original.paymentState)) continue;
     // Refresh the version before every release: webhook and Operations actions
     // are allowed to race this compensation and are never guessed away.
     current = await readRouteSettlement(params);
@@ -373,7 +359,7 @@ export async function releaseKnownRouteHolds(params: {
         "The Route changed during payment recovery. Couranr Support must reconcile it.", "conflict");
     }
     if (item.paymentState === "cancelled") continue;
-    if (item.paymentState !== "authorized") return failure(operation, "hold_changed_during_release",
+    if (!["authorized", "requires_action"].includes(item.paymentState)) return failure(operation, "hold_changed_during_release",
       "A payment hold changed during recovery. Couranr Support must reconcile it.", "conflict");
     const { data: obligation, error: readError } = await supabaseAdmin
       .from("couranr_payment_obligations")
@@ -383,7 +369,7 @@ export async function releaseKnownRouteHolds(params: {
       .eq("quote_version_id", item.quoteVersionId)
       .eq("business_account_id", params.businessAccountId)
       .maybeSingle();
-    if (readError || !obligation || obligation.payment_state !== "authorized" ||
+    if (readError || !obligation || obligation.payment_state !== item.paymentState ||
         obligation.version !== item.obligationVersion ||
         !providerId(obligation.provider_payment_intent_id, "pi")) {
       return failure(operation, { reason: "obligation_recheck", readError },

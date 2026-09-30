@@ -135,6 +135,51 @@ try{
     JSON.parse(one(`select public.couranr_sync_route_run_settlement(
       '${biz}','${owner}','${second.route}',false)`)).state,"recovery_required");
   check("one live driver ownership",one("select count(*) from public.couranr_route_run_resource_reservations where resource_state='reserved'"),"1");
+  check("browser roles cannot expire a Route checkout",
+    one("select has_function_privilege('anon','public.couranr_expire_route_run_checkout(uuid)','EXECUTE') or has_function_privilege('authenticated','public.couranr_expire_route_run_checkout(uuid)','EXECUTE')"),"f");
+  one(`update public.couranr_route_run_resource_reservations
+    set reserved_at=now()-interval '11 minutes',
+        expires_at=now()-interval '1 minute' where route_run_id='${first.route}'`);
+  const expired=JSON.parse(one(`select public.couranr_expire_route_run_checkout('${first.route}')`));
+  check("expired Route resource cannot hold an executable settlement",expired.state,"recovery_required");
+  check("expired Route resource is no longer live",
+    one(`select resource_state from public.couranr_route_run_resource_reservations where route_run_id='${first.route}'`),"expired");
+  check("expiry creates child-scoped Operations recovery records",
+    one(`select count(*) from public.couranr_automation_exceptions
+      where request_id in ('${first.a.requestId}','${first.b.requestId}')
+        and reason='route_resource_reservation_expired' and exception_state='open'`),"2");
+  check("expiry does not invent provider release or capture",
+    one(`select string_agg(o.payment_state,',' order by i.sequence)
+      from public.couranr_route_run_settlement_items i
+      join public.couranr_route_run_settlements s on s.id=i.settlement_id
+      join public.couranr_payment_obligations o on o.id=i.obligation_id
+      where s.route_run_id='${first.route}'`),"authorized,authorized");
+  check("expiry replay is idempotent",
+    JSON.parse(one(`select public.couranr_expire_route_run_checkout('${first.route}')`)).state,
+    "recovery_required");
+  const unattended=await acceptedPaidRoute("rr003c-unattended");
+  one(`update public.couranr_route_run_settlements
+    set updated_at=now()-interval '31 minutes' where route_run_id='${unattended.route}'`);
+  check("unattended authorized holds become recovery-required rather than lingering",
+    JSON.parse(one(`select public.couranr_expire_route_run_checkout('${unattended.route}')`)).state,
+    "recovery_required");
+  check("unattended checkout never created a resource",
+    one(`select count(*) from public.couranr_route_run_resource_reservations
+      where route_run_id='${unattended.route}'`),"0");
+  const stalledAction=await acceptedPaidRoute("rr003c-action-timeout");
+  one(`update public.couranr_payment_obligations set payment_state='requires_action',
+    version=version+1 where id='${stalledAction.settlement.items[1].obligationId}'`);
+  check("one child awaiting card action is not a fully authorized Route",
+    JSON.parse(one(`select public.couranr_sync_route_run_settlement(
+      '${biz}','${owner}','${stalledAction.route}',false)`)).state,"authorization_required");
+  one(`update public.couranr_route_run_settlements
+    set updated_at=now()-interval '31 minutes' where route_run_id='${stalledAction.route}'`);
+  check("stale SCA cannot hold earlier child authorization indefinitely",
+    JSON.parse(one(`select public.couranr_expire_route_run_checkout('${stalledAction.route}')`)).state,
+    "recovery_required");
+  check("stale SCA expiry preserves provider truth for verified cancellation",
+    one(`select payment_state from public.couranr_payment_obligations
+      where id='${stalledAction.settlement.items[1].obligationId}'`),"requires_action");
   check("resource RLS enabled",one("select relrowsecurity from pg_class where oid='public.couranr_route_run_resource_reservations'::regclass"),"t");
   check("anon cannot execute reservation RPC",one("select has_function_privilege('anon','public.couranr_reserve_route_run_resource(uuid,uuid,uuid,timestamptz)','EXECUTE')"),"f");
   check("authenticated cannot read resource rows",one("select has_table_privilege('authenticated','public.couranr_route_run_resource_reservations','SELECT')"),"f");

@@ -304,4 +304,79 @@ revoke all on function public.couranr_reserve_route_run_resource(uuid,uuid,uuid,
 grant execute on function public.couranr_reserve_route_run_resource(uuid,uuid,uuid,timestamptz)
   to service_role;
 
+-- The Checkout UI is not a durable worker. A merchant may close the tab after
+-- card authorization, or after reserving a resource. Move either stale case
+-- into a recoverable financial state; a server worker then releases only
+-- provider-verified holds through the existing canonical release command.
+-- This command itself NEVER asserts that a provider hold was released.
+create function public.couranr_expire_route_run_checkout(p_route_run_id uuid)
+returns jsonb language plpgsql security definer set search_path='' as $fn$
+declare
+  v_route public.couranr_route_runs;
+  v_settlement public.couranr_route_run_settlements;
+  v_resource public.couranr_route_run_resource_reservations;
+  v_reason text;
+  v_item record;
+begin
+  select * into v_route from public.couranr_route_runs
+   where id=p_route_run_id for update;
+  if not found then raise exception 'route_draft_not_found' using errcode='CR404'; end if;
+  select * into v_settlement from public.couranr_route_run_settlements
+   where route_run_id=v_route.id for update;
+  if not found then raise exception 'route_settlement_not_found' using errcode='CR404'; end if;
+  select * into v_resource from public.couranr_route_run_resource_reservations
+   where route_run_id=v_route.id for update;
+
+  if v_route.route_state='accepted'
+     and v_settlement.settlement_state='authorized'
+     and v_settlement.updated_at<=now()-interval '30 minutes'
+     and not exists(select 1 from public.couranr_route_run_settlement_events e
+       where e.settlement_id=v_settlement.id and e.event_type='pickup_ready_confirmed') then
+    v_reason:='route_pickup_readiness_timeout';
+  elsif v_route.route_state='accepted'
+     and v_settlement.settlement_state='authorization_required'
+     and v_settlement.updated_at<=now()-interval '30 minutes' then
+    v_reason:='route_card_authentication_timeout';
+  elsif v_route.route_state='accepted'
+     and v_settlement.settlement_state='resource_reserved'
+     and v_resource.resource_state in ('reserved','expired')
+     and v_resource.expires_at<=now() then
+    v_reason:='route_resource_reservation_expired';
+  else
+    return private.couranr_route_settlement_view(v_settlement.id);
+  end if;
+
+  if v_resource.id is not null and v_resource.resource_state='reserved' then
+    update public.couranr_route_run_resource_reservations
+       set resource_state='expired',released_at=now(),
+           release_reason=v_reason,version=version+1,updated_at=now()
+     where id=v_resource.id;
+    insert into public.couranr_route_run_resource_events(resource_id,event_type,detail)
+      values(v_resource.id,'expired',jsonb_build_object('reason',v_reason));
+  end if;
+  update public.couranr_route_run_settlements
+     set settlement_state='recovery_required',version=version+1,updated_at=now()
+   where id=v_settlement.id;
+  insert into public.couranr_route_run_settlement_events(
+    settlement_id,event_type,detail)
+  values(v_settlement.id,'recovery_required',jsonb_build_object('reason',v_reason));
+  for v_item in select i.request_id,i.sequence,p.id as plan_id
+      from public.couranr_route_run_settlement_items i
+      left join public.couranr_service_plans p on p.request_id=i.request_id
+        and p.plan_state='confirmed'
+     where i.settlement_id=v_settlement.id order by i.sequence
+  loop
+    perform public.couranr_open_automation_exception(
+      v_item.request_id,'commercial',v_reason,
+      jsonb_build_object('routeRunId',v_route.id,'settlementId',v_settlement.id,
+        'sequence',v_item.sequence),v_item.plan_id,null);
+  end loop;
+  return private.couranr_route_settlement_view(v_settlement.id);
+end
+$fn$;
+revoke all on function public.couranr_expire_route_run_checkout(uuid)
+  from public,anon,authenticated,service_role;
+grant execute on function public.couranr_expire_route_run_checkout(uuid)
+  to service_role;
+
 commit;

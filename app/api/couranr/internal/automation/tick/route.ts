@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { runAutomaticFulfillmentTick } from "@/lib/couranr/automation/engine";
+import { runRouteCheckoutMaintenance } from "@/lib/couranr/routeRuns/progress";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -21,9 +22,13 @@ export async function GET(req: NextRequest) {
   }
 
   const result = await runAutomaticFulfillmentTick();
+  const routeCheckout = process.env.VERCEL_ENV === "production"
+    ? { considered: 0, advanced: 0, attention: 0 }
+    : await runRouteCheckoutMaintenance();
   return NextResponse.json({
     ok: true,
     advanced: result.advanced.length,
     dispatched: result.dispatched.length,
+    routeCheckout,
   });
 }

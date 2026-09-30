@@ -36,3 +36,32 @@ export type BusinessDeclaredValueView = {
   declaredValueCents: number;
   protectionLevel: "standard" | "secure_pickup" | "protected_handoff";
 };
+
+/** Browser-safe RR-003 projection. Provider IDs and saved-card secrets stay server-side. */
+export type RouteSettlementView = {
+  settlementId: string;
+  routeRunId: string;
+  state: string;
+  version: number;
+  referenceTotalCents: number;
+  currency: "usd";
+  card: { brand: string; last4: string };
+  pickupReadyConfirmed: boolean;
+  uncertainObligationId: string | null;
+  items: {
+    sequence: number;
+    requestId: string;
+    quoteVersionId: string;
+    obligationId: string;
+    amountCents: number;
+    paymentState: string;
+    deliveryId: string | null;
+    obligationVersion: number;
+  }[];
+};
+
+export type RouteProgress = {
+  settlement: RouteSettlementView;
+  next: "continue" | "confirm_pickup_ready" | "authenticate_card" | "operations_review" | "ready";
+  actionClientSecret?: string;
+};

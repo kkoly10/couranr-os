@@ -16,6 +16,7 @@ import {
 import { formatCents, type DeliveryRequestView } from "@/lib/couranr/requests/view";
 import type { RouteRunView } from "@/lib/couranr/routeRuns/types";
 import { abandonRouteRun, acceptRouteRun, cancelAcceptedRouteRun, fetchRouteRun, saveRouteRunDraft } from "./client";
+import { RouteCheckoutPanel } from "./RouteCheckoutPanel";
 
 const uuid = () => crypto.randomUUID();
 
@@ -180,6 +181,7 @@ export function RouteRunDetail({ routeRunId }: { routeRunId: string }) {
     route.stops.reduce((sum, stop) => sum + (deliveries.get(stop.requestId)?.quote.deliverySubtotalCents ?? 0), 0) === route.referenceQuoteTotalCents;
   const activeAccount = accounts.find((account) => account.businessAccountId === businessAccountId);
   const mayWrite = !!activeAccount && ["owner", "manager", "dispatcher"].includes(activeAccount.role);
+  const mayPay = !!activeAccount && ["owner", "manager"].includes(activeAccount.role);
   const stateLabel = route.state === "accepted" ? "Accepted" : route.state === "abandoned" ? "Archived" : route.state === "cancelled" ? "Cancelled" : "Draft";
   const stateTone = route.state === "accepted" ? "success" : route.state === "draft" ? "warning" : "neutral";
 
@@ -277,6 +279,13 @@ export function RouteRunDetail({ routeRunId }: { routeRunId: string }) {
           ) : null}
         </Stack>
       </Card>
+
+      {route.state === "accepted" && route.acceptedVersion !== null ? <RouteCheckoutPanel
+        key={`${businessAccountId}:${routeRunId}`}
+        businessAccountId={businessAccountId} routeRunId={routeRunId}
+        acceptedVersion={route.acceptedVersion} stopCount={route.stopCount}
+        totalCents={route.referenceQuoteTotalCents} mayPay={mayPay}
+      /> : null}
 
       <Stack gap={4}>
         {route.stops.map((stop) => {

@@ -36,6 +36,7 @@
  */
 
 import { spawn } from "node:child_process";
+import { createServer } from "node:net";
 import { openSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -43,8 +44,8 @@ import { createRequire } from "node:module";
 import { claimDevDistDir } from "./devDistDir.mjs";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-const BASE = (process.env.BASE_URL || "http://127.0.0.1:3125").replace(/\/$/, "");
-const PORT = Number(new URL(BASE).port || 3000);
+let BASE = (process.env.BASE_URL || "http://127.0.0.1:3125").replace(/\/$/, "");
+let PORT = Number(new URL(BASE).port || 3000);
 const APP_LOG = path.join(ROOT, "e2e/artifacts/fonts-app.log");
 const devDist = claimDevDistDir("fonts");
 const CONTROL = process.argv.includes("--positive-control");
@@ -78,6 +79,25 @@ async function reachable() {
   }
 }
 
+async function isCouranrServer() {
+  try {
+    const response = await fetch(`${BASE}/fonts/Inter-Variable.woff2`);
+    return response.ok && response.headers.get("content-type")?.includes("font/woff2");
+  } catch { return false; }
+}
+
+function unusedPort() {
+  return new Promise((resolve, reject) => {
+    const server = createServer();
+    server.once("error", reject);
+    server.listen(0, "127.0.0.1", () => {
+      const address = server.address();
+      const port = typeof address === "object" && address ? address.port : null;
+      server.close(() => port ? resolve(port) : reject(new Error("no_free_font_gate_port")));
+    });
+  });
+}
+
 function stopApp() {
   // Only this process's own server, and therefore only this process's own
   // generated route types: a run that REUSED a server already answering never
@@ -94,8 +114,14 @@ function stopApp() {
 
 async function startApp() {
   if (await reachable()) {
-    console.log(`reusing the dev server already answering at ${BASE}`);
-    return;
+    if (await isCouranrServer()) {
+      console.log(`reusing the Couranr dev server already answering at ${BASE}`);
+      return;
+    }
+    // A different repo can own the conventional port on a shared Mac. Never
+    // measure its fonts or pages as Couranr evidence, and never kill it.
+    PORT = await unusedPort();
+    BASE = `http://127.0.0.1:${PORT}`;
   }
   console.log(`starting next dev on ${PORT} ...`);
   const log = openSync(APP_LOG, "w");
