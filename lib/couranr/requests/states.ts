@@ -98,6 +98,9 @@ export type RequestCommand = (typeof REQUEST_COMMANDS)[number];
  *
  * `issue_recipient_dropoff_code` is the third of that kind: the recipient
  * minting their own handoff credential leaves an audit fact and moves nothing.
+ * `route_checkout_confirmed` is emitted only by the accepted Route settlement
+ * command while it confirms each exact child. It is not a standalone request
+ * transition a browser may invoke.
  */
 export const REQUEST_EVENT_COMMANDS = [
   ...REQUEST_COMMANDS,
@@ -109,6 +112,7 @@ export const REQUEST_EVENT_COMMANDS = [
   "record_recipient_adult_attestation",
   "issue_recipient_dropoff_code",
   "sender_cancellation_review_requested",
+  "route_checkout_confirmed",
 ] as const;
 export type RequestEventCommand = (typeof REQUEST_EVENT_COMMANDS)[number];
 

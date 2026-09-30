@@ -77,7 +77,9 @@ function parallel(sql) {
   });
 }
 try {
-  const info = up({ quiet: true });
+  // RR-002 forward/rollback/forward is probed at its own schema boundary;
+  // RR-003 later adds settlement FKs that intentionally forbid dropping it.
+  const info = up({ quiet: true, throughMigration: "20260930023313_couranr_route_run_claim_fk_index.sql" });
   console.log(`RR-002 acceptance: ${info.migrationsApplied} migrations applied`);
 
   // Paired rollback must actually restore RR-001 when RR-002 has no semantic use.

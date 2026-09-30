@@ -266,6 +266,7 @@ describe("server-only modules are unreachable from client code", () => {
       // Business Route Run drafts use service-role RPCs and must stay behind
       // the authenticated Business API boundary.
       "lib/couranr/routeRuns/commands.ts",
+      "lib/couranr/routeRuns/settlement.ts",
       // Provider-neutral composition: Google verifies address identity,
       // Mapbox owns route/distance/traffic. Neither authority reaches clients.
       "lib/couranr/routing/canonicalRoute.ts",

@@ -28,7 +28,10 @@ const cancelRollback = readFileSync(resolve(ROOT, "supabase/rollbacks/2026093002
 const indexMigration = readFileSync(resolve(ROOT, "supabase/migrations/20260930023313_couranr_route_run_claim_fk_index.sql"), "utf8");
 const indexRollback = readFileSync(resolve(ROOT, "supabase/rollbacks/20260930023313_couranr_route_run_claim_fk_index.rollback.sql"), "utf8");
 try {
-  up({ quiet: true });
+  // Test the historical RR-001/RR-002 rollback layer before later RR-003
+  // migrations add dependent settlement FKs. A full-head rollback of an
+  // already-dependent schema must refuse rather than cascade through money.
+  up({ quiet: true, throughMigration: "20260930023313_couranr_route_run_claim_fk_index.sql" });
   check("all migrations replay with the route foundation", one("select to_regclass('public.couranr_route_runs') is not null"), "t");
   // RR-002 extends RR-001. Remove the empty extension before probing the RR-001
   // rollback itself, then put both layers back.
