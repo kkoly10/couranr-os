@@ -4113,7 +4113,7 @@
         "code_value": "RR-002 freezes accepted children but has no saved-card settlement or Route-owned dispatch resource.",
         "code_location": "Route Run RR-002 commands and accepted-route detail",
         "resolution": "Use one canonical child obligation and provider intent per stop, then reserve one Route resource before existing child capture.",
-        "remediation_commit": "RR-003 implementation pending exact-head verification"
+        "remediation_commit": "b9ec3c936ca935143e252ce9c679f8f59106dea3"
       },
       "implementation_phase": "Route Run V1 settlement/resource ownership",
       "acceptance_criteria": [
@@ -4188,7 +4188,7 @@
         "code_value": "Canonical dispatch and driver execution currently assume one active delivery assignment per driver and one pickup per delivery.",
         "code_location": "Dispatch assignment indexes and driver fulfillment commands",
         "resolution": "Add one Route-owned resource and guarded same-Route child assignments, shared pickup accounting, sequential custody and Route-terminal release.",
-        "remediation_commit": "RR-004 implementation pending exact-head verification"
+        "remediation_commit": "5fdbe2138d562b321e0a24d70900707cfbd94e5f"
       },
       "implementation_phase": "Route Run V1 custody/sequential execution",
       "acceptance_criteria": [

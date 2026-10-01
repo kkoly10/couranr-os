@@ -66,6 +66,7 @@
     "test:rr003-route-plans": "node e2e/disposable/routeRunServicePlans.mjs",
     "test:rr003-route-capture": "node e2e/disposable/routeRunCaptureGate.mjs",
     "test:rr004-route-execution": "node e2e/disposable/routeRunExecution.mjs",
+    "test:rr003-fk-indexes": "node e2e/disposable/routeRunFkIndexes.mjs",
     "test:problem-audience": "node e2e/disposable/customerProblemAudience.mjs",
     "test:credit-settlement": "node e2e/disposable/creditSettlement.mjs",
     "test:rollback-guards": "node e2e/disposable/rollbackGuards.mjs",
