@@ -56,6 +56,7 @@ const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
  * this script exists to remove.
  */
 const SYSTEM_BIN = "/usr/local/bin/postgrest";
+const HOMEBREW_BIN = "/opt/homebrew/bin/postgrest";
 const REPO_BIN = path.join(ROOT, ".tooling/postgrest");
 
 const IMAGE = "postgrest/postgrest";
@@ -75,6 +76,10 @@ function canWrite(dir) {
 export function postgrestTarget() {
   if (process.env.COURANR_POSTGREST) return process.env.COURANR_POSTGREST;
   if (existsSync(SYSTEM_BIN)) return SYSTEM_BIN;
+  // The disposable browser suite also runs on Apple Silicon. A cached Linux
+  // ELF in .tooling exists but cannot execute there; prefer the installed
+  // native Homebrew binary before falling back to that cache.
+  if (process.platform === "darwin" && existsSync(HOMEBREW_BIN)) return HOMEBREW_BIN;
   if (existsSync(REPO_BIN)) return REPO_BIN;
   return canWrite(path.dirname(SYSTEM_BIN)) ? SYSTEM_BIN : REPO_BIN;
 }

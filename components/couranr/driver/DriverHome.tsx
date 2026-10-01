@@ -4,7 +4,7 @@ import * as React from "react";
 import { Badge, Text } from "@/components/couranr/primitives";
 import { CardSkeleton, ErrorState, LoadingState } from "@/components/couranr/states";
 import { isApiFailure, withReference } from "@/components/couranr/requests/client";
-import { DriverAssignmentCard } from "@/components/couranr/dispatch/DriverAssignmentCard";
+import { DriverRouteTask } from "@/components/couranr/routes/DriverRouteTask";
 import { fetchMyDriverProfile, type DriverAccountView } from "./client";
 
 type State =
@@ -82,7 +82,7 @@ export function DriverHome() {
         <Badge tone={s.tone}>{s.label}</Badge>
       </header>
 
-      <DriverAssignmentCard />
+      <DriverRouteTask />
 
       <div className="cr-driver-home__footer-note">
         Couranr assigns compatible work. There is nothing to bid on, claim, or price from the

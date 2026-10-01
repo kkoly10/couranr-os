@@ -35,6 +35,11 @@ const NEXT_BIN = path.join(ROOT, "node_modules/next/dist/bin/next");
 const PORT = 3318;
 const BASE = `http://127.0.0.1:${PORT}`;
 const PASSWORD = "route-run-browser-1";
+const PROOF_IMAGE = Buffer.from(
+  "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO6pZ1cAAAAASUVORK5CYII=",
+  "base64");
+const signedUploads = new Map();
+const storedProofBytes = new Map();
 const sql = (q) => psql(q).trim();
 const esc = (s) => String(s).replace(/'/g, "''");
 let passed = 0;
@@ -43,6 +48,14 @@ let failed = 0;
 function check(id, description, ok, detail = "") {
   ok ? passed++ : failed++;
   console.log(`  ${ok ? "PASS" : "FAIL"}  ${id}  ${description}${detail ? `  [${detail}]` : ""}`);
+}
+async function waitUntil(label, probe, timeoutMs = 20_000) {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    if (await probe()) return;
+    await new Promise((resolve) => setTimeout(resolve, 200));
+  }
+  throw new Error(`${label} did not converge in ${timeoutMs}ms`);
 }
 function fieldLabel(scope, name) {
   const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -53,6 +66,57 @@ function makeUser(email, role = "customer") {
   sql(`select public.couranr_disposable_set_password('${id}','${esc(PASSWORD)}')`);
   sql(`insert into public.profiles(id,email,role) values('${id}','${esc(email)}','${role}')`);
   return id;
+}
+
+async function storageHandler(req, res) {
+  const url = new URL(req.url, "http://127.0.0.1");
+  const route = decodeURIComponent(url.pathname.slice("/storage/v1/".length));
+  const send = (status, body) => {
+    res.writeHead(status, { "content-type": "application/json",
+      "access-control-allow-origin": "*" });
+    res.end(JSON.stringify(body));
+  };
+  const chunks = [];
+  for await (const chunk of req) chunks.push(chunk);
+  const bytes = Buffer.concat(chunks);
+  const upload = route.match(/^object\/upload\/sign\/delivery-photos\/(.+)$/);
+  if (upload && req.method === "POST") {
+    if (req.headers.authorization !== `Bearer ${SERVICE_ROLE_JWT}`) return send(401, { error: "service role required" });
+    const token = crypto.randomBytes(20).toString("base64url");
+    signedUploads.set(token, upload[1]);
+    return send(200, { url: `/${route}?token=${token}` });
+  }
+  if (upload && req.method === "PUT") {
+    const token = url.searchParams.get("token");
+    if (!token || signedUploads.get(token) !== upload[1]) return send(403, { error: "invalid signed upload" });
+    if (!bytes.length || bytes.length > 10 * 1024 * 1024 ||
+        req.headers["content-type"] !== "image/png") return send(415, { error: "invalid image" });
+    signedUploads.delete(token);
+    storedProofBytes.set(upload[1], bytes);
+    sql(`insert into storage.objects(bucket_id,name,metadata) values(
+      'delivery-photos','${esc(upload[1])}',
+      jsonb_build_object('size',${bytes.length},'mimetype','image/png'))`);
+    return send(200, { Key: `delivery-photos/${upload[1]}` });
+  }
+  if (route === "object/list/delivery-photos" && req.method === "POST") {
+    if (req.headers.authorization !== `Bearer ${SERVICE_ROLE_JWT}`) return send(401, { error: "service role required" });
+    const body = JSON.parse(bytes.toString() || "{}");
+    const directory = String(body.prefix ?? "").replace(/\/$/, "");
+    const search = String(body.search ?? "");
+    const rows = JSON.parse(sql(`select coalesce(jsonb_agg(jsonb_build_object(
+      'name',substring(name from length('${esc(directory)}')+2),'metadata',metadata)),
+      '[]'::jsonb) from storage.objects where bucket_id='delivery-photos'
+      and name like '${esc(`${directory}/%`)}'
+      and name like '${esc(`%${search}%`)}'`));
+    return send(200, rows);
+  }
+  const read = route.match(/^object\/sign\/delivery-photos\/(.+)$/);
+  if (read && req.method === "POST") {
+    if (req.headers.authorization !== `Bearer ${SERVICE_ROLE_JWT}`) return send(401, { error: "service role required" });
+    if (!storedProofBytes.has(read[1])) return send(404, { error: "not found" });
+    return send(200, { signedURL: `/object/authenticated/delivery-photos/${encodeURIComponent(read[1])}?token=disposable-read` });
+  }
+  return send(501, { error: "unsupported disposable storage action" });
 }
 
 async function stopChild(child, { group = false } = {}) {
@@ -95,7 +159,7 @@ async function main() {
       workDir: "/var/lib/postgresql/couranr-disposable/rr002-browser-pgrst",
     });
     if (!(await waitForPostgrest())) throw new Error("PostgREST did not start");
-    gateway = await startGateway();
+    gateway = await startGateway({ storageHandler });
 
     const env = {
       ...process.env,
@@ -104,6 +168,7 @@ async function main() {
       SUPABASE_SERVICE_ROLE_KEY: SERVICE_ROLE_JWT,
       PORT: String(PORT),
       NODE_ENV: "production",
+      COURANR_HANDOFF_CODE_SECRET: crypto.randomBytes(48).toString("base64url"),
     };
 
     rmSync(path.join(ROOT, DIST), { recursive: true, force: true });
@@ -151,7 +216,7 @@ async function main() {
       region: "VA",
       postalCode: "22554",
     };
-    async function child(marker, subtotal, dropoffLine) {
+    async function child(marker, subtotal, dropoffLine, declaredValueCents = 10000) {
       const seeded = await seedCanonicalQuotedRequest(transport, {
         businessId: business,
         actorUserId: owner,
@@ -174,7 +239,7 @@ async function main() {
         'Package ${marker}',1,'${marker}',null
       )`);
       const value = JSON.parse(sql(`select public.couranr_record_business_declared_value(
-        '${business}','${owner}','${seeded.requestId}',${seeded.version},10000
+        '${business}','${owner}','${seeded.requestId}',${seeded.version},${declaredValueCents}
       )`));
       return { ...seeded, version: value.version };
     }
@@ -200,6 +265,26 @@ async function main() {
       await page.getByRole("button", { name: /^Sign in$/ }).click();
       await page.waitForURL((url) => !url.pathname.startsWith("/sign-in"), { timeout: 45_000 });
       return page;
+    }
+
+    async function authenticatedPost(page, pathname, body) {
+      // APIRequestContext shares cookies but canonical APIs require the Bearer
+      // token that the browser client normally attaches. Read this disposable
+      // user's @supabase/ssr session; never print or persist the token.
+      const cookies = (await page.context().cookies()).filter((cookie) =>
+        /^sb-.*-auth-token(?:\.\d+)?$/.test(cookie.name));
+      cookies.sort((left, right) => {
+        const sequence = (cookie) => Number(cookie.name.match(/\.(\d+)$/)?.[1] ?? 0);
+        return sequence(left) - sequence(right);
+      });
+      const encoded = cookies.map((cookie) => cookie.value).join("");
+      if (!encoded.startsWith("base64-")) throw new Error("authenticated browser session missing");
+      const session = JSON.parse(Buffer.from(encoded.slice(7), "base64url").toString());
+      if (!session.access_token) throw new Error("authenticated browser token missing");
+      return page.request.post(`${BASE}${pathname}`, {
+        headers: { authorization: `Bearer ${session.access_token}` },
+        ...(body === undefined ? {} : { data: body }),
+      });
     }
 
     const ownerPage = await signIn("rr002-browser-owner@couranr.invalid");
@@ -339,6 +424,233 @@ async function main() {
       blockedProviderSteps === 1, String(blockedProviderSteps));
     check("B32", "confirming checkout without advancing calls no live Stripe endpoint",
       stripeRequests.length === 0, String(stripeRequests.length));
+
+    // RR-004 authenticated physical choreography. Payment/proof rows are
+    // disposable provider/evidence doubles: the browser exercises Route
+    // task authority, not a claim of real Stripe, PIN, or photo verification.
+    const execA = await child("browser-execution-one", 2000, "41 Browser Stop Ln", 1000);
+    const execB = await child("browser-execution-two", 2000, "42 Browser Stop Ln", 1000);
+    const executionRoute = crypto.randomUUID();
+    sql(`select public.couranr_save_route_run_draft('${business}','${owner}',
+      '${executionRoute}',0,'${crypto.randomUUID()}','Execution browser route',
+      array['${execA.requestId}','${execB.requestId}']::uuid[])`);
+    sql(`select public.couranr_accept_route_run('${business}','${owner}',
+      '${executionRoute}',1,'${crypto.randomUUID()}')`);
+    const execCheckout = JSON.parse(sql(`select public.couranr_begin_route_run_checkout(
+      '${business}','${owner}','${executionRoute}',1,'${crypto.randomUUID()}')`));
+    for (const item of execCheckout.items) {
+      sql(`select public.couranr_begin_route_child_authorization(
+        '${business}','${owner}','${executionRoute}','${item.obligationId}')`);
+      sql(`select id from public.couranr_attach_payment_intent(
+        '${item.obligationId}',${item.obligationVersion},'pi_rr004browser${item.sequence}')`);
+      const metadata = JSON.stringify({ paymentObligationId: item.obligationId,
+        couranrRequestId: item.requestId, businessAccountId: business,
+        quoteVersionId: item.quoteVersionId, payerType: "merchant",
+        pricingPolicyVersion: "couranr-pricing-v2-2026-09-01" }).replaceAll("'", "''");
+      sql(`select outcome from public.couranr_apply_payment_intent_state(
+        'rr004browser-auth-${item.sequence}',
+        'payment_intent.amount_capturable_updated',
+        'pi_rr004browser${item.sequence}','requires_capture',
+        ${item.amountCents},${item.amountCents},'usd','${metadata}'::jsonb,now())`);
+    }
+    sql(`select public.couranr_sync_route_run_settlement('${business}',
+      '${owner}','${executionRoute}',false)`);
+    sql(`select public.couranr_confirm_route_pickup_ready('${business}',
+      '${owner}','${executionRoute}',1,true)`);
+    const routeDriverUser = makeUser("rr004-browser-driver@couranr.invalid", "driver");
+    const routeOps = makeUser("rr004-browser-ops@couranr.invalid", "admin");
+    const routeDriver = sql(`insert into public.couranr_drivers(
+      user_id,display_name,driver_state,availability_state,active,market)
+      values('${routeDriverUser}','RR004 Browser Driver','active','available',true,
+        'dc_va_launch_corridor') returning id`);
+    const routeVehicle = sql(`insert into public.couranr_dispatch_vehicles(
+      name,vehicle_class,payload_capacity_lb,active,availability_state)
+      values('RR004 Browser Van','van',100,true,'available') returning id`);
+    sql(`select public.couranr_reserve_route_run_resource('${business}',
+      '${owner}','${executionRoute}',now())`);
+    sql(`select public.couranr_confirm_route_service_plans('${business}',
+      '${owner}','${executionRoute}',1)`);
+    sql(`select public.couranr_begin_route_run_capture('${business}',
+      '${owner}','${executionRoute}',1)`);
+    const execDeliveries = [];
+    for (const item of execCheckout.items) {
+      sql(`select id from public.couranr_begin_route_child_capture(
+        '${business}','${owner}','${executionRoute}','${item.obligationId}')`);
+      sql(`select outcome from public.couranr_complete_payment_capture(
+        '${item.obligationId}','rr004browser-capture-${item.sequence}',
+        'pi_rr004browser${item.sequence}','succeeded',${item.amountCents},'usd')`);
+      execDeliveries.push(sql(`select id from public.couranr_create_delivery_from_capture(
+        '${item.requestId}')`));
+    }
+    sql(`select public.couranr_complete_route_run_funding('${business}',
+      '${owner}','${executionRoute}')`);
+    const executionId = JSON.parse(sql(`select public.couranr_begin_route_execution(
+      '${business}','${owner}','${executionRoute}')`)).executionId;
+    const routeDriverPage = await signIn("rr004-browser-driver@couranr.invalid",
+      { width: 390, height: 844 });
+    await routeDriverPage.context().grantPermissions(["geolocation"]);
+    await routeDriverPage.context().setGeolocation({ latitude: 38.3, longitude: -77.4 });
+    await routeDriverPage.goto(`${BASE}/driver`, { waitUntil: "domcontentloaded" });
+    await routeDriverPage.getByText("Execution browser route", { exact: true })
+      .waitFor({ state: "visible", timeout: 30_000 });
+    check("B33", "driver sees one Route task with both separate packages",
+      await routeDriverPage.getByText(/One pickup · 2 separate deliveries/).isVisible() &&
+      await routeDriverPage.getByText(/Package browser-execution-one/).isVisible() &&
+      await routeDriverPage.getByText(/Package browser-execution-two/).isVisible());
+    await routeDriverPage.getByRole("button", { name: "Start route to pickup" }).click();
+    await waitUntil("shared pickup leg", () => sql(`select count(*) from
+      public.couranr_deliveries where route_run_id='${executionRoute}'
+      and fulfillment_state='en_route_to_pickup'`) === "2");
+    check("B34", "one browser action starts both child pickup legs",
+      sql(`select count(*) from public.couranr_deliveries where route_run_id='${executionRoute}'
+        and fulfillment_state='en_route_to_pickup'`) === "2");
+    await routeDriverPage.getByRole("button", { name: "Capture pickup location" }).click();
+    await routeDriverPage.getByRole("button", { name: "Confirm arrival at pickup" })
+      .waitFor({ state: "visible" });
+    await routeDriverPage.getByRole("button", { name: "Confirm arrival at pickup" }).click();
+    await waitUntil("shared pickup arrival", () => sql(`select count(*) from
+      public.couranr_deliveries where route_run_id='${executionRoute}'
+      and fulfillment_state='at_pickup'`) === "2");
+    await routeDriverPage.getByRole("link", { name: "Record child pickup" }).first()
+      .waitFor({ state: "visible" });
+    check("B35", "one evidenced browser arrival reaches both children",
+      sql(`select count(*) from public.couranr_deliveries where route_run_id='${executionRoute}'
+        and fulfillment_state='at_pickup'`) === "2");
+    check("B36", "driver sees both child pickup actions",
+      await routeDriverPage.getByRole("link", { name: "Record child pickup" }).count() === 2);
+    check("B37", "departure stays disabled before per-child custody proof",
+      await routeDriverPage.getByRole("button", { name: "Depart with verified packages" }).isDisabled());
+    const opsRoutePage = await signIn("rr004-browser-ops@couranr.invalid");
+    await opsRoutePage.goto(`${BASE}/operations/deliveries/${execA.requestId}`,
+      { waitUntil: "domcontentloaded" });
+    await opsRoutePage.getByText("Route Run · Execution browser route", { exact: true })
+      .waitFor({ state: "visible", timeout: 30_000 });
+    check("B38", "Operations sees one Route with payment and shared resource truth",
+      (await opsRoutePage.locator("body").innerText()).includes("Settlement: ready for execution") &&
+      (await opsRoutePage.locator("body").innerText()).includes("Resource: committed"));
+    check("B39", "Route physical browser has called no live provider",
+      stripeRequests.length === 0 && providerRequests.length === 0);
+    for (const [index, deliveryId] of execDeliveries.entries()) {
+      const issued = await authenticatedPost(ownerPage,
+        `/api/couranr/merchant/deliveries/${deliveryId}/pickup-code`);
+      check(`B${40 + index * 4}`, `sender can issue Stop ${index + 1} pickup-only credential`,
+        issued.ok());
+      const code = (await issued.json()).handoffCode?.code;
+      if (!/^\d{6}$/.test(String(code))) throw new Error("pickup code was not issued");
+      await routeDriverPage.goto(`${BASE}/driver/deliveries/${deliveryId}`,
+        { waitUntil: "domcontentloaded" });
+      await routeDriverPage.getByRole("button", { name: "Enter six-digit code instead" })
+        .waitFor({ state: "visible" });
+      await routeDriverPage.getByRole("button", { name: "Share location" }).click();
+      await routeDriverPage.getByRole("button", { name: "Enter six-digit code instead" }).click();
+      await routeDriverPage.getByLabel("Pickup code").fill(code);
+      await routeDriverPage.getByRole("button", { name: "Verify code" }).click();
+      await routeDriverPage.getByText("Sender verified").waitFor({ state: "visible" });
+      check(`B${41 + index * 4}`, `Stop ${index + 1} accepts only its pickup credential`,
+        sql(`select count(*) from public.couranr_handoff_codes
+          where delivery_id='${deliveryId}' and code_kind='merchant_pickup'
+            and code_state='consumed'`) === "1");
+      await routeDriverPage.getByLabel("Photo of the pickup").setInputFiles({
+        name: `synthetic-route-pickup-${index + 1}.png`, mimeType: "image/png",
+        buffer: PROOF_IMAGE,
+      });
+      await waitUntil(`Stop ${index + 1} pickup proof`, () => sql(`select count(*) from
+        public.couranr_delivery_proofs where delivery_id='${deliveryId}'
+          and proof_stage='pickup'`) === "1", 30_000);
+      check(`B${42 + index * 4}`, `Stop ${index + 1} photo is child-scoped`, true);
+      await routeDriverPage.getByRole("button", { name: "Confirm pickup" }).click();
+      await waitUntil(`Stop ${index + 1} custody`, () => sql(`select fulfillment_state from
+        public.couranr_deliveries where id='${deliveryId}'`) === "picked_up");
+      check(`B${43 + index * 4}`, `Stop ${index + 1} pickup transfers only that child custody`,
+        sql(`select count(*) from public.couranr_handoff_records
+          where delivery_id='${deliveryId}' and handoff_stage='pickup'`) === "1");
+    }
+    await routeDriverPage.goto(`${BASE}/driver`, { waitUntil: "domcontentloaded" });
+    await routeDriverPage.getByRole("button", { name: "Depart with verified packages" })
+      .waitFor({ state: "visible" });
+    await routeDriverPage.getByRole("button", { name: "Depart with verified packages" }).click();
+    await waitUntil("Route custody departure", () => sql(`select count(*) from
+      public.couranr_deliveries where route_run_id='${executionRoute}'
+        and fulfillment_state='in_transit'`) === "2");
+    check("B48", "one departure places both verified children in transit",
+      sql(`select current_sequence from public.couranr_route_run_executions
+        where id='${executionId}'`) === "1");
+    await routeDriverPage.goto(`${BASE}/driver/deliveries/${execDeliveries[1]}`,
+      { waitUntil: "domcontentloaded" });
+    await routeDriverPage.getByText(/Stop 2/).first().waitFor({ state: "visible" });
+    check("B49", "later child has no out-of-order drop-off action",
+      await routeDriverPage.getByRole("button", { name: "I have arrived at drop-off" }).count() === 0);
+    for (const [index, deliveryId] of execDeliveries.entries()) {
+      const codeResponse = await authenticatedPost(ownerPage,
+        `/api/couranr/merchant/deliveries/${deliveryId}/recipient-code`);
+      check(`B${50 + index * 6}`, `sender issues Stop ${index + 1} recipient-only credential after custody`,
+        codeResponse.ok());
+      const recipientCode = (await codeResponse.json()).handoffCode?.code;
+      if (!/^\d{6}$/.test(String(recipientCode))) throw new Error("recipient code was not issued");
+      await routeDriverPage.goto(`${BASE}/driver/deliveries/${deliveryId}`,
+        { waitUntil: "domcontentloaded" });
+      const arrive = routeDriverPage.getByRole("button", { name: "I have arrived at drop-off" });
+      await arrive.waitFor({ state: "visible" });
+      await routeDriverPage.getByRole("button", { name: "Share location" }).click();
+      await waitUntil(`Stop ${index + 1} drop-off location`, () => arrive.isEnabled());
+      await arrive.click();
+      await waitUntil(`Stop ${index + 1} drop-off arrival`, () => sql(`select fulfillment_state
+        from public.couranr_deliveries where id='${deliveryId}'`) === "at_dropoff");
+      check(`B${51 + index * 6}`, `driver reaches only current Stop ${index + 1}`, true);
+      await routeDriverPage.getByLabel("Six-digit recipient code").fill(recipientCode);
+      await routeDriverPage.getByRole("button", { name: "Check code" }).click();
+      await routeDriverPage.getByText("Code accepted", { exact: true }).waitFor();
+      check(`B${52 + index * 6}`, `Stop ${index + 1} recipient credential verifies`, true);
+      await routeDriverPage.getByLabel("First name of the person taking the shipment")
+        .fill("Disposable");
+      await routeDriverPage.getByRole("button", { name: "Complete handoff" }).click();
+      await waitUntil(`Stop ${index + 1} delivered`, () => sql(`select fulfillment_state
+        from public.couranr_deliveries where id='${deliveryId}'`) === "delivered");
+      check(`B${53 + index * 6}`, `Stop ${index + 1} has one recipient handoff and delivery proof`,
+        sql(`select count(*) from public.couranr_handoff_codes where delivery_id='${deliveryId}'
+          and code_kind='recipient_dropoff' and code_state='consumed'`) === "1" &&
+        sql(`select count(*) from public.couranr_delivery_proofs where delivery_id='${deliveryId}'
+          and proof_stage='dropoff'`) === "1");
+      check(`B${54 + index * 6}`, `Stop ${index + 1} has not prematurely released Route resources`,
+        sql(`select resource_state from public.couranr_route_run_resource_reservations
+          where route_run_id='${executionRoute}'`) === "committed" &&
+        sql(`select availability_state from public.couranr_drivers
+          where id='${routeDriver}'`) === "on_delivery");
+      await routeDriverPage.goto(`${BASE}/driver`, { waitUntil: "domcontentloaded" });
+      const advance = routeDriverPage.getByRole("button", {
+        name: "Continue to next stop or finish Route" });
+      await advance.waitFor({ state: "visible" });
+      await advance.click();
+      await waitUntil(index === 0 ? "Route advanced to Stop 2" : "Route completed",
+        () => sql(`select ${index === 0 ? "current_sequence" : "execution_state"}
+          from public.couranr_route_run_executions where id='${executionId}'`) ===
+          (index === 0 ? "2" : "completed"));
+      check(`B${55 + index * 6}`, index === 0
+        ? "Stop 1 advances to Stop 2 without releasing the shared resource"
+        : "last Stop completes the Route", true);
+    }
+    check("B62", "Route terminal command releases driver and vehicle exactly once",
+      sql(`select resource_state from public.couranr_route_run_resource_reservations
+        where route_run_id='${executionRoute}'`) === "released" &&
+      sql(`select availability_state from public.couranr_drivers where id='${routeDriver}'`) === "available" &&
+      sql(`select availability_state from public.couranr_dispatch_vehicles where id='${routeVehicle}'`) === "available" &&
+      sql(`select count(*) from public.couranr_route_run_execution_events
+        where execution_id='${executionId}' and event_type='resource_released'`) === "1");
+    check("B63", "all Route children retain separate exact commercial and custody records",
+      sql(`select count(distinct payment_obligation_id) from public.couranr_deliveries
+        where route_run_id='${executionRoute}'`) === "2" &&
+      sql(`select count(*) from public.couranr_delivery_events e
+        join public.couranr_deliveries d on d.id=e.delivery_id
+        where d.route_run_id='${executionRoute}' and e.to_state='delivered'`) === "2");
+    await ownerPage.goto(`${BASE}/app/business/routes/${executionRoute}?businessAccountId=${business}`,
+      { waitUntil: "domcontentloaded" });
+    await ownerPage.getByText("Route completed", { exact: true })
+      .waitFor({ state: "visible" });
+    check("B64", "merchant Route detail shows terminal resource and each child outcome",
+      await ownerPage.getByText("Stop 1: delivered", { exact: true }).isVisible() &&
+      await ownerPage.getByText("Stop 2: delivered", { exact: true }).isVisible() &&
+      (await ownerPage.locator("body").innerText()).includes("Shared resource: released"));
+    void routeOps; void routeDriver; void routeVehicle;
 
     console.log(`Route Run Merchant Browser: ${passed}/${passed + failed} checks PASS.`);
     if (failed) process.exitCode = 1;

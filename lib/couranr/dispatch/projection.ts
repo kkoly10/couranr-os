@@ -26,6 +26,8 @@ import { resolveLargeLoadPackageCount } from "@/lib/couranr/driver/states";
 
 export type AssignedDeliveryProjection = {
   deliveryId: string;
+  /** Route-owned sibling context for driver UX only; no money or tenant data. */
+  route?: { routeRunId: string; sequence: number; currentSequence: number; executionState: string };
   /**
    * The delivery's OWN optimistic-concurrency token — not `request_version`,
    * which stays withheld above.

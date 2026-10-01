@@ -266,6 +266,7 @@ describe("server-only modules are unreachable from client code", () => {
       // Business Route Run drafts use service-role RPCs and must stay behind
       // the authenticated Business API boundary.
       "lib/couranr/routeRuns/commands.ts",
+      "lib/couranr/routeRuns/execution.ts",
       "lib/couranr/routeRuns/progress.ts",
       "lib/couranr/routeRuns/settlement.ts",
       // Provider-neutral composition: Google verifies address identity,
@@ -396,6 +397,7 @@ describe("canonical server routes do not import the browser client", () => {
       "app/api/couranr/driver/profile/route.ts",
       "app/api/couranr/driver/proof/[proofId]/url/route.ts",
       "app/api/couranr/driver/proof/finalize/route.ts",
+      "app/api/couranr/driver/route-run/route.ts",
       "app/api/couranr/help/[token]/problem-report/route.ts",
       "app/api/couranr/help/[token]/resolution-request/route.ts",
       "app/api/couranr/help/[token]/route.ts",
@@ -474,6 +476,7 @@ describe("canonical server routes do not import the browser client", () => {
       "app/api/couranr/operations/refunds/[id]/approve/route.ts",
       "app/api/couranr/operations/refunds/[id]/deny/route.ts",
       "app/api/couranr/operations/refunds/route.ts",
+      "app/api/couranr/operations/route-execution/route.ts",
       "app/api/couranr/operations/settings/audit/route.ts",
       "app/api/couranr/operations/settings/availability/route.ts",
       "app/api/couranr/operations/vehicles/[id]/route.ts",

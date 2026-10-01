@@ -49,3 +49,24 @@ Authority: root decision registry RR-003 / RR-004.
 | Driver/vehicle is disabled mid-Route | No silent reallocation; terminal release honors current active flags. |
 
 No live provider or production customer canary is required before disposable PostgreSQL, local Stripe doubles and authenticated Chromium prove these invariants.
+
+## RR-004 pre-implementation adversarial pass (2026-09-30)
+
+| Authority edge | Failure to prevent | Testable boundary |
+| --- | --- | --- |
+| Route assignment versus ordinary dispatch | A driver or vehicle is committed twice, or Route child 2 is rejected by the ordinary one-driver index | One global resource lock; only same-execution siblings may share; unrelated assignments still fail under concurrency |
+| Child identity | A Route assignment points at a delivery outside the accepted version, or a child is assigned to a different driver/vehicle | Exact accepted stop, funded settlement item, delivery, resource and execution IDs checked in SQL |
+| Shared pickup | One child advances alone, or the Route departs with a missing/unevidenced package | Route command moves the visit atomically; existing child pickup proof remains required; departure checks every child under lock |
+| Stop sequence | Direct single-delivery endpoint advances Stop 4 while Stop 2 is current | Database transition guard, not a hidden button; all driver commands retain generic foreign-delivery refusal |
+| Exception and return cargo | One failure silently skips later stops or a return obligation disappears at final normal delivery | Route pauses for Operations decision; unresolved custody blocks Route completion and resource release |
+| Resource release | Finishing the first child makes driver/vehicle available, or concurrent terminal attempts release twice | Existing child release helper becomes Route-aware; one Route terminal command checks all child custody and releases once |
+| Recovery before physical execution | Partial capture leaves a committed resource forever, or releases it while captured money/custody is unresolved | Operations release is allowed only after canonical financial and delivery resolution; unknown provider or live custody refuses |
+| Privacy and rollback | A recipient reads sibling data, or rollback deletes Route custody history | Recipient stays on child tokens; Route reads require merchant, assigned driver or Operations authority; lock-first semantic rollback refusal |
+
+## Local implementation evidence and activation gate
+
+RR-003a/b/c are implemented in the route-execution worktree as saved-card consent, exact child settlement, Route-owned resource reservation, pickup readiness, service plans and recoverable child capture. The application deliberately refuses production Route checkout until an explicit activation decision. Provider failures are tested with doubles; no live Stripe or routing call is part of this evidence.
+
+RR-004a/b/c are implemented as one Route execution over canonical child deliveries and their existing proof/credential/return commands. The disposable PostgreSQL suite has 68/68 checks, including failed shared pickup with mixed loaded/missing cargo, settled refund versus open return, failed Stop 1 with Operations continuation and terminal release only after return cargo closes. The authenticated disposable browser suite has 64/64 checks through two separate pickup-code/photo/custody paths, one shared departure, ordered recipient PIN handoffs, one final resource release and the merchant's terminal progress view. This is software evidence, not a production physical pilot.
+
+Before claiming launch readiness: run exact-head full gates, apply only approved additive migrations after production preflight, verify security and production deployment identity, then conduct a human-operated two-stop physical pilot and longer 3–5 stop pilots. Never synthesize production custody or card charges to replace that pilot.

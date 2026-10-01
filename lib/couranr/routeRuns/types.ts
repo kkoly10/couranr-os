@@ -63,5 +63,11 @@ export type RouteSettlementView = {
 export type RouteProgress = {
   settlement: RouteSettlementView;
   next: "continue" | "confirm_pickup_ready" | "authenticate_card" | "operations_review" | "ready";
+  execution?: {
+    state: string;
+    currentSequence: number;
+    resourceState: string;
+    stops: Array<{ sequence: number; fulfillmentState: string }>;
+  };
   actionClientSecret?: string;
 };

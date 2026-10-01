@@ -1646,11 +1646,13 @@ describe("the driver-execution panels are actually mounted", () => {
     expect(read("components/couranr/dispatch/AssignedDeliveryDetail.tsx")).toContain("<DrivingMode");
   });
 
-  it("the driver dashboard reaches the canonical assignment card through DriverHome", () => {
+  it("the driver dashboard shows one Route task or falls back to the canonical assignment card", () => {
     const page = read("app/(couranr)/driver/page.tsx");
     const home = read("components/couranr/driver/DriverHome.tsx");
+    const route = read("components/couranr/routes/DriverRouteTask.tsx");
     expect(page).toContain("<DriverHome");
-    expect(home).toContain("<DriverAssignmentCard />");
+    expect(home).toContain("<DriverRouteTask />");
+    expect(route).toContain("<DriverAssignmentCard />");
     // The legacy list is gone rather than sitting below canonical current work.
     expect(page).not.toContain("No active delivery assigned right now.");
     expect(page).not.toContain("fetchMyDeliveries");

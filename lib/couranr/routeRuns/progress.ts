@@ -21,7 +21,8 @@ function fail(operation: string, reason: unknown, message: string): Failure {
   logServerFailure({ operation, correlationId, code: "conflict", detail: reason });
   return { ok: false, code: "conflict", correlationId, message };
 }
-function present(settlement: RouteSettlementView, actionClientSecret?: string): RouteProgress {
+function present(settlement: RouteSettlementView, actionClientSecret?: string,
+  execution?: RouteProgress["execution"]): RouteProgress {
   let next: RouteProgress["next"] = "continue";
   if (settlement.state === "authorized" && !settlement.pickupReadyConfirmed) next = "confirm_pickup_ready";
   else if (settlement.state === "authorization_required") next = "authenticate_card";
@@ -30,13 +31,55 @@ function present(settlement: RouteSettlementView, actionClientSecret?: string): 
   else if (settlement.state === "capture_pending" &&
       settlement.items.some((item) => item.paymentState === "capture_pending"))
     next = "operations_review";
-  else if (settlement.state === "ready_for_execution") next = "ready";
-  return { settlement, next, ...(actionClientSecret ? { actionClientSecret } : {}) };
+  else if (settlement.state === "ready_for_execution") next = execution ? "ready" : "continue";
+  return { settlement, next, ...(execution ? { execution } : {}),
+    ...(actionClientSecret ? { actionClientSecret } : {}) };
 }
 export async function readRouteProgress(params: Params): Promise<Result | { ok: true; value: null }> {
   const read = await readRouteSettlement(params);
   if (read.ok === false) return read;
-  return { ok: true, value: read.value ? present(read.value) : null };
+  if (!read.value) return { ok: true, value: null };
+  if (read.value.state !== "ready_for_execution") {
+    return { ok: true, value: present(read.value) };
+  }
+  const [execution, resource] = await Promise.all([
+    supabaseAdmin.from("couranr_route_run_executions")
+      .select("execution_state,current_sequence")
+      .eq("route_run_id", params.routeRunId).maybeSingle(),
+    supabaseAdmin.from("couranr_route_run_resource_reservations")
+      .select("resource_state")
+      .eq("settlement_id", read.value.settlementId).maybeSingle(),
+  ]);
+  if (execution.error || resource.error || !resource.data) return fail("readRouteProgress",
+    execution.error?.message ?? resource.error?.message ?? "route_resource_missing",
+    "Couranr could not confirm this Route's execution status.");
+  if (!execution.data) return { ok: true, value: present(read.value) };
+  const deliveryIds = read.value.items.map((item) => item.deliveryId);
+  if (deliveryIds.some((id) => !id)) return fail("readRouteProgress", "route_child_delivery_missing",
+    "Couranr could not confirm every Route delivery.");
+  const { data: deliveries, error: deliveryError } = await supabaseAdmin
+    .from("couranr_deliveries")
+    .select("id,fulfillment_state")
+    .eq("route_run_id", params.routeRunId)
+    .in("id", deliveryIds as string[]);
+  if (deliveryError || !deliveries || deliveries.length !== deliveryIds.length) {
+    return fail("readRouteProgress", deliveryError?.message ?? "route_child_delivery_mismatch",
+      "Couranr could not confirm every Route delivery.");
+  }
+  const byId = new Map(deliveries.map((delivery) => [delivery.id, delivery.fulfillment_state]));
+  const stops: NonNullable<RouteProgress["execution"]>["stops"] = [];
+  for (const item of read.value.items) {
+    const fulfillmentState = byId.get(item.deliveryId!);
+    if (!fulfillmentState) return fail("readRouteProgress", "route_child_delivery_mismatch",
+      "Couranr could not confirm every Route delivery.");
+    stops.push({ sequence: item.sequence, fulfillmentState });
+  }
+  return { ok: true, value: present(read.value, undefined, {
+    state: execution.data.execution_state,
+    currentSequence: execution.data.current_sequence,
+    resourceState: resource.data.resource_state,
+    stops,
+  }) };
 }
 
 async function rpcStep(operation: string, fn: string, args: Record<string, unknown>): Promise<Failure | null> {
@@ -56,9 +99,9 @@ const args = (p: Params) => ({
   p_route_run_id: p.routeRunId,
 });
 async function refreshed(params: Params): Promise<Result> {
-  const read = await readRouteSettlement(params);
+  const read = await readRouteProgress(params);
   if (read.ok === false) return read;
-  return read.value ? { ok: true, value: present(read.value) } :
+  return read.value ? { ok: true, value: read.value } :
     fail("advanceRouteRun", "settlement_disappeared", "Couranr could not find this Route checkout.");
 }
 
@@ -158,6 +201,10 @@ export async function advanceRouteRun(params: Params): Promise<Result> {
     });
     if (isFulfillmentFailure(captured)) return captured;
     return refreshed(params);
+  }
+  if (settlement.state === "ready_for_execution") {
+    const error = await rpcStep("advanceRouteRun", "couranr_begin_route_execution", args(params));
+    return error ?? refreshed(params);
   }
   return { ok: true, value: present(settlement) };
 }

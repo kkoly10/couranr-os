@@ -206,6 +206,7 @@ const STAGES = [
     ["test:rr003-route-readiness", "RR-003d Route pickup readiness — explicit merchant attestation, exact child authorization, atomic canonical readiness and rollback refusal"],
     ["test:rr003-route-plans", "RR-003d Route-owned canonical plans — common pickup window, resource identity, standalone bypass refusal and rollback safety"],
     ["test:rr003-route-capture", "RR-003d Route capture admission — committed resource, sequenced canonical child capture/conversion, no premature assignment and rollback refusal"],
+    ["test:rr004-route-execution", "RR-004a funded child assignments — one Route resource, ordinary exclusion, canonical events and semantic rollback refusal"],
     ["test:problem-audience", "CUS-004 sender/recipient Help problem-report isolation — same-delivery private audiences and rollback refusal"],
     ["test:business-routing", "Business Places/Routes immutable-quote execution matrix"],
     ["test:messaging", "authenticated messaging"],
@@ -262,6 +263,7 @@ const STAGES = [
         "test:rr003-route-readiness",
         "test:rr003-route-plans",
         "test:rr003-route-capture",
+        "test:rr004-route-execution",
         "test:problem-audience",
         "test:business-routing",
         "test:consumer-place-ratelimit",
@@ -328,12 +330,12 @@ const STAGES = [
     tier: 4,
     name: "test:route-run-merchant",
     run: ["npm", ["run", "test:route-run-merchant"]],
-    why: "RR-002 authenticated disposable browser — list, builder, accepted contract, viewer authority and clean process teardown",
+    why: "Route Run authenticated disposable browser — builder, settlement, shared pickup, ordered delivery, resource release and clean teardown",
     settle: settleDisposablePorts,
     assert: (out) => {
       const m = out.match(/Route Run Merchant Browser: (\d+)\/(\d+) checks PASS\./);
-      if (!m || m[1] !== "32" || m[2] !== "32") {
-        return "RR-002 requires its complete 22/22 authenticated browser tally";
+      if (!m || m[1] !== "64" || m[2] !== "64") {
+        return "Route Run requires its complete 64/64 authenticated browser tally";
       }
       if (!out.includes("RR-002 cleanup: Next, gateway, PostgREST and PostgreSQL stopped; disposable build removed.")) {
         return "RR-002 did not confirm clean process teardown";

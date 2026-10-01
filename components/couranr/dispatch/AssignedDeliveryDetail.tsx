@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import Link from "next/link";
 import {
   Alert,
   Badge,
@@ -242,6 +243,11 @@ function ActiveAssignment({
 }) {
   const state = isFulfillmentState(assigned.fulfillmentState) ? assigned.fulfillmentState : null;
   const method = isProofMethod(assigned.proof.method) ? assigned.proof.method : null;
+  const route = assigned.route;
+  const sharedRouteStep = Boolean(route && state &&
+    ["assigned", "en_route_to_pickup", "picked_up"].includes(state));
+  const laterRouteStop = Boolean(route && state === "in_transit"
+    && route.sequence !== route.currentSequence);
 
   // Both arguments are required rather than optional: omitting the proof method
   // would silently yield null at `at_dropoff` and render a dead end.
@@ -318,7 +324,8 @@ function ActiveAssignment({
    * on a stationary delivery falls through to the full detail rather than
    * hiding the controls the driver stopped in order to use.
    */
-  if (drivingMode && state !== null && isDrivingState(state)) {
+  if (drivingMode && !sharedRouteStep && !laterRouteStop
+    && state !== null && isDrivingState(state)) {
     return (
       <DrivingMode
         assigned={assigned}
@@ -361,6 +368,10 @@ function ActiveAssignment({
           {state ? <LifecycleTimeline current={state} /> : null}
         </Stack>
       </Card>
+
+      {route ? <Alert tone="info" title={`Route Run · Stop ${route.sequence}`}>
+        This delivery belongs to a shared-pickup Route Run. Use the <Link href="/driver">Route task</Link> for the common pickup trip, departure and stop advancement.
+      </Alert> : null}
 
       {/*
         No Driving Mode surface here. DRV-005 owns it as its own component,
@@ -480,7 +491,11 @@ function ActiveAssignment({
         </Grid>
       </Card>
 
-      <NextAction
+      {sharedRouteStep || laterRouteStop ? <Alert tone="warning">
+        {laterRouteStop
+          ? "This is a later Route stop. Finish the current stop before travelling here."
+          : "This movement is shared by the Route Run. Return to the Route task; child pickup proof remains on this page when you arrive."}
+      </Alert> : <NextAction
         assigned={assigned}
         state={state}
         command={command}
@@ -491,7 +506,7 @@ function ActiveAssignment({
         onStart={run}
         onArrive={arrive}
         reload={reload}
-      />
+      />}
     </Stack>
   );
 }

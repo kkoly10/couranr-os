@@ -51,7 +51,7 @@ export type FulfillmentView = {
     scheduledPickupEnd: string;
     timezone: string;
     vehicleRequirement: { vehicleClass?: string; maxPayloadLb?: number };
-    planSource: "operations" | "automatic";
+    planSource: "operations" | "automatic" | "route_run";
     plannerVersion: string | null;
     marketKey: string | null;
     dispatchNotBefore: string | null;
@@ -73,7 +73,7 @@ export type FulfillmentView = {
     scheduledPickupStart: string;
     scheduledPickupEnd: string;
     timezone: string;
-    planSource: "operations" | "automatic";
+    planSource: "operations" | "automatic" | "route_run";
     plannerVersion: string | null;
     marketKey: string | null;
     dispatchNotBefore: string | null;
@@ -89,7 +89,7 @@ export type FulfillmentView = {
       id: string;
       driverId: string;
       vehicleId: string;
-      assignmentSource: "operations" | "automatic";
+      assignmentSource: "operations" | "automatic" | "route_run";
       assignedAt: string;
       version: number;
     } | null;

@@ -19,7 +19,7 @@ vi.mock("@/lib/couranr/fulfillment/commands", () => ({
 }));
 
 import {
-  advanceRouteRun, confirmRoutePickupReady, runRouteCheckoutMaintenance,
+  advanceRouteRun, confirmRoutePickupReady, readRouteProgress, runRouteCheckoutMaintenance,
 } from "@/lib/couranr/routeRuns/progress";
 
 const businessAccountId = "11111111-1111-4111-8111-111111111111";
@@ -44,6 +44,19 @@ const settlement = (state: string, pickupReadyConfirmed = false,
 beforeEach(() => {
   vi.clearAllMocks();
   mocks.rpc.mockResolvedValue({ data: {}, error: null });
+  mocks.from.mockImplementation((table: string) => {
+    const query = {
+      select: () => query,
+      eq: () => query,
+      maybeSingle: async () => ({ data: table === "couranr_route_run_executions"
+        ? { execution_state: "ready", current_sequence: 0 }
+        : { resource_state: "committed" }, error: null }),
+      in: async (_column: string, ids: string[]) => ({ data: ids.map((id) => ({
+        id, fulfillment_state: "scheduled",
+      })), error: null }),
+    };
+    return query;
+  });
   mocks.route.mockResolvedValue({ ok: true, value: { state: "accepted", acceptedVersion: 1 } });
   mocks.capture.mockResolvedValue({ ok: true, value: { outcome: "captured" } });
   mocks.reconcileCapture.mockResolvedValue({ ok: true, value: { outcome: "pending" } });
@@ -145,6 +158,41 @@ describe("RR-003 server-owned checkout progression", () => {
       p_business_account_id: businessAccountId, p_actor_user_id: actorUserId,
       p_route_run_id: routeRunId,
     });
+  });
+
+  it("projects child outcomes in stop order without recipient or provider details", async () => {
+    const delivered = [item(1, "captured", "88888888-8888-4888-8888-888888888881"),
+      item(2, "captured", "88888888-8888-4888-8888-888888888882")];
+    mocks.read.mockResolvedValue({ ok: true, value: settlement("ready_for_execution", true, delivered) });
+    mocks.from.mockImplementation((table: string) => {
+      const query = {
+        select: () => query,
+        eq: () => query,
+        maybeSingle: async () => ({ data: table === "couranr_route_run_executions"
+          ? { execution_state: "completed", current_sequence: 2 }
+          : { resource_state: "released" }, error: null }),
+        in: async () => ({ data: delivered.map((entry) => ({
+          id: entry.deliveryId, fulfillment_state: "delivered", recipient_email: "private@example.com",
+        })), error: null }),
+      };
+      return query;
+    });
+    const result = await readRouteProgress(params);
+    expect(result.ok && result.value?.execution).toEqual({
+      state: "completed", currentSequence: 2, resourceState: "released",
+      stops: [{ sequence: 1, fulfillmentState: "delivered" },
+        { sequence: 2, fulfillmentState: "delivered" }],
+    });
+    expect(JSON.stringify(result)).not.toContain("private@example.com");
+  });
+
+  it("refuses to show operational readiness when a funded child delivery is missing", async () => {
+    mocks.read.mockResolvedValue({ ok: true, value: settlement("ready_for_execution", true, [
+      item(1, "captured", "88888888-8888-4888-8888-888888888881"), item(2, "captured"),
+    ]) });
+    const result = await readRouteProgress(params);
+    expect(result.ok).toBe(false);
+    expect(mocks.from).not.toHaveBeenCalledWith("couranr_deliveries");
   });
 
   it("returns only the existing child action secret for SCA", async () => {

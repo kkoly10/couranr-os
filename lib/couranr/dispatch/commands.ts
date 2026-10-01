@@ -81,7 +81,7 @@ const VEHICLE_COLUMNS =
   "availability_state,version,created_at,updated_at";
 const ASSIGNMENT_COLUMNS =
   "id,delivery_id,driver_id,vehicle_id,assignment_state,assigned_by,assigned_at,ended_at," +
-  "end_reason,version,created_at,updated_at";
+  "end_reason,version,created_at,updated_at,route_run_id,route_execution_id";
 
 export type DispatchFailure = {
   ok: false;
@@ -809,7 +809,8 @@ export async function resolveMerchantBusinessForDelivery(
  * Scoped by the driver profile that belongs to the CALLER's user id, never by
  * anything the caller supplied. There is no delivery id parameter that a driver
  * could point at someone else's work: the query starts from their own profile
- * and walks to the single active assignment.
+ * and walks to their active assignments. Route siblings are an explicit
+ * exception to the ordinary one-active-assignment rule.
  *
  * Returns null — not a 403 — when there is no assignment, because "you have no
  * work" and "that work is not yours" must look identical from outside.
@@ -829,13 +830,52 @@ export async function getAssignedDeliveryForDriver(params: {
   if (drvErr) return fail({ operation: op, code: "internal", detail: drvErr.message });
   if (!driver) return { ok: true, value: { assigned: null } };
 
-  const { data: assignment, error: asgErr } = (await supabaseAdmin
+  let assignmentQuery = supabaseAdmin
     .from("couranr_delivery_assignments")
     .select(ASSIGNMENT_COLUMNS)
     .eq("driver_id", driver.id)
-    .eq("assignment_state", "active")
-    .maybeSingle()) as { data: any; error: any };
+    .eq("assignment_state", "active");
+  if (params.deliveryId) assignmentQuery = assignmentQuery.eq("delivery_id", params.deliveryId);
+  const { data: assignments, error: asgErr } = (await assignmentQuery
+    .order("assigned_at", { ascending: true })
+    .limit(5)) as { data: any[] | null; error: any };
   if (asgErr) return fail({ operation: op, code: "internal", detail: asgErr.message });
+  // A generic dashboard may see 2–5 Route siblings. Never choose an arbitrary
+  // active row: only the database execution's current stop can be offered.
+  let assignment = assignments?.[0] ?? null;
+  if (!params.deliveryId && assignments?.length && assignments[0]?.route_execution_id) {
+    const executionId = assignments[0]?.route_execution_id;
+    if (!executionId || assignments.some((item) => item.route_execution_id !== executionId)) {
+      return fail({ operation: op, code: "internal", detail: "mixed_active_driver_assignments" });
+    }
+    const { data: execution, error: executionError } = (await supabaseAdmin
+      .from("couranr_route_run_executions")
+      .select("route_version_id,current_sequence,execution_state")
+      .eq("id", executionId)
+      .maybeSingle()) as { data: any; error: any };
+    if (executionError || !execution) {
+      return fail({ operation: op, code: "internal", detail: executionError?.message ?? "route_execution_missing" });
+    }
+    const sequence = execution.current_sequence > 0 ? execution.current_sequence : 1;
+    const { data: stop, error: stopError } = (await supabaseAdmin
+      .from("couranr_route_run_stops")
+      .select("request_id")
+      .eq("route_version_id", execution.route_version_id)
+      .eq("sequence", sequence)
+      .maybeSingle()) as { data: any; error: any };
+    if (stopError || !stop) {
+      return fail({ operation: op, code: "internal", detail: stopError?.message ?? "route_current_stop_missing" });
+    }
+    const { data: currentDelivery, error: currentError } = (await supabaseAdmin
+      .from("couranr_deliveries")
+      .select("id")
+      .eq("request_id", stop.request_id)
+      .maybeSingle()) as { data: any; error: any };
+    if (currentError || !currentDelivery) {
+      return fail({ operation: op, code: "internal", detail: currentError?.message ?? "route_current_delivery_missing" });
+    }
+    assignment = assignments.find((item) => item.delivery_id === currentDelivery.id) ?? null;
+  }
   if (!assignment) return { ok: true, value: { assigned: null } };
 
   // A driver asking about a specific delivery gets an answer only for the one
@@ -904,10 +944,33 @@ export async function getAssignedDeliveryForDriver(params: {
     request: governed,
   });
 
+  let route: AssignedDeliveryProjection["route"];
+  if (assignment.route_execution_id && assignment.route_run_id) {
+    const { data: execution, error: executionError } = await supabaseAdmin
+      .from("couranr_route_run_executions")
+      .select("current_sequence,execution_state,route_version_id")
+      .eq("id", assignment.route_execution_id).maybeSingle();
+    if (executionError || !execution) {
+      return fail({ operation: op, code: "internal",
+        detail: executionError?.message ?? "route_execution_missing" });
+    }
+    const { data: stop, error: stopError } = await supabaseAdmin
+      .from("couranr_route_run_stops").select("sequence")
+      .eq("route_version_id", execution.route_version_id)
+      .eq("request_id", delivery.request_id).maybeSingle();
+    if (stopError || !stop) {
+      return fail({ operation: op, code: "internal",
+        detail: stopError?.message ?? "route_stop_missing" });
+    }
+    route = { routeRunId: assignment.route_run_id,
+      sequence: stop.sequence, currentSequence: execution.current_sequence,
+      executionState: execution.execution_state };
+  }
+
   return {
     ok: true,
     value: {
-      assigned: buildAssignedDeliveryProjection({
+      assigned: { ...buildAssignedDeliveryProjection({
         delivery,
         assignment,
         vehicle: vehicle ?? null,
@@ -915,7 +978,7 @@ export async function getAssignedDeliveryForDriver(params: {
         // Governed ONLY: a level without a policy version is not something this
         // policy wrote, and a driver must not be shown a ceremony nobody agreed to.
         protectionLevel: governed?.protection_policy_version ? governed?.protection_level : null,
-      }),
+      }), ...(route ? { route } : {}) },
     },
   };
 }

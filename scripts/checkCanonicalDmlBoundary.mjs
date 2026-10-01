@@ -19,6 +19,8 @@ const PROTECTED = [
   "couranr_route_run_settlement_events",
   "couranr_route_run_resource_reservations",
   "couranr_route_run_resource_events",
+  "couranr_route_run_executions",
+  "couranr_route_run_execution_events",
   "couranr_service_plans",
   "couranr_deliveries",
   "couranr_delivery_events",

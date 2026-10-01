@@ -134,4 +134,21 @@ describe("RR-003 merchant Route checkout", () => {
     expect(screen.queryByRole("button", { name: "Continue Route checkout" })).toBeNull();
     expect(mocks.action).not.toHaveBeenCalled();
   });
+
+  it("shows ordered child outcomes and released resource without exposing recipient details", async () => {
+    mocks.fetch.mockResolvedValue({ ok: true, value: {
+      progress: { ...progress("ready_for_execution", "ready", true), execution: {
+        state: "completed", currentSequence: 2, resourceState: "released",
+        stops: [{ sequence: 1, fulfillmentState: "delivered" },
+          { sequence: 2, fulfillmentState: "delivered" }],
+      } }, checkoutAvailable: true,
+    } });
+    render(<RouteCheckoutPanel {...props} />);
+    await screen.findByText("Route completed");
+    expect(screen.getByText("Stop 1: delivered")).toBeTruthy();
+    expect(screen.getByText("Stop 2: delivered")).toBeTruthy();
+    expect(screen.getByText(/Shared resource: released/)).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Continue Route checkout" })).toBeNull();
+    expect(mocks.action).not.toHaveBeenCalled();
+  });
 });

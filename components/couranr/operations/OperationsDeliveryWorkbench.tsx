@@ -22,6 +22,7 @@ import { OperationsPilotCreditPanel } from "@/components/couranr/fulfillment/Ope
 import { OperationsAssignmentPanel } from "@/components/couranr/dispatch/OperationsAssignmentPanel";
 import { OperationsExecutionPanel } from "@/components/couranr/dispatch/OperationsExecutionPanel";
 import { CustodyBundlePanel } from "@/components/couranr/operations/CustodyBundlePanel";
+import { OperationsRouteExecution } from "@/components/couranr/routes/OperationsRouteExecution";
 import { OperationsRefundReviewEntry } from "@/components/couranr/operations/refunds/OperationsRefundReviewEntry";
 import type { FulfillmentView } from "@/components/couranr/fulfillment/client";
 import {
@@ -172,6 +173,8 @@ export function OperationsDeliveryWorkbench({
       {fulfillment?.delivery ? (
         <CustodyBundlePanel deliveryId={fulfillment.delivery.id} />
       ) : null}
+      {fulfillment?.delivery ? <OperationsRouteExecution
+        requestId={request.id} onChanged={onLifecycleChanged} /> : null}
     </Stack>
   );
 }

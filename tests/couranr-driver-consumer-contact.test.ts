@@ -8,12 +8,19 @@ const fixture = vi.hoisted(() => ({
 vi.mock("@/lib/supabaseAdmin", () => ({
   supabaseAdmin: {
     from(table: string) {
+      const filters: Record<string, unknown> = {};
       const query = {
         select(columns: string) {
           fixture.selected.push({ table, columns });
           return query;
         },
-        eq() { return query; },
+        eq(column: string, value: unknown) { filters[column] = value; return query; },
+        order() { return query; },
+        limit: async () => {
+          const row = fixture.rows[table];
+          return { data: row && (filters.delivery_id === undefined ||
+            row.delivery_id === filters.delivery_id) ? [row] : [], error: null };
+        },
         maybeSingle: async () => ({ data: fixture.rows[table] ?? null, error: null }),
       };
       return query;

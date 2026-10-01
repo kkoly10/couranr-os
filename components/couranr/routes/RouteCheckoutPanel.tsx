@@ -168,9 +168,25 @@ export function RouteCheckoutPanel(props: Props) {
         {progress.next === "operations_review" ? <Alert tone="warning" title="Couranr is reviewing this Route">
           Do not start pickup. A payment or resource outcome needs reconciliation before the Route can move.
         </Alert> : null}
-        {progress.next === "ready" ? <Alert tone="success" title="Route funded">
-          All child delivery payments and canonical delivery records are confirmed. Pickup has not begun.
-        </Alert> : null}
+        {progress.next === "ready" && progress.execution ? <>
+          <Alert tone={progress.execution.state === "exception" ||
+            progress.execution.state === "returning" ||
+            progress.execution.state === "cancelled" ? "warning" : "success"}
+            title={progress.execution.state === "completed" ? "Route completed" :
+              progress.execution.state === "cancelled" ? "Route closed" :
+              progress.execution.state === "exception" || progress.execution.state === "returning"
+                ? "Route needs Operations review" : "Route funded and assigned"}>
+            Every stop has its own captured delivery payment. Route status: {progress.execution.state.replaceAll("_", " ")}.
+            {progress.execution.state === "completed" ? " All destinations are complete." :
+              progress.execution.state === "cancelled" ? " Execution is closed." :
+                progress.execution.currentSequence === 0 ? " Common pickup is current." :
+                  ` Current destination: Stop ${progress.execution.currentSequence}.`}
+            {` Shared resource: ${progress.execution.resourceState.replaceAll("_", " ")}.`}
+          </Alert>
+          <ol>{progress.execution.stops.map((stop) => <li key={stop.sequence}>
+            Stop {stop.sequence}: {stop.fulfillmentState.replaceAll("_", " ")}
+          </li>)}</ol>
+        </> : null}
       </> : null}
       {loaded ? <Button variant="secondary" disabled={working} onClick={() => void refresh()}>
         Refresh checkout status
