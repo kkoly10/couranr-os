@@ -71,3 +71,14 @@ export type RouteProgress = {
   };
   actionClientSecret?: string;
 };
+
+/** No billing, provider, obligation, card, quote or settlement identity. */
+export type RouteOperationalStatus =
+  "payment_pending" | "ready_for_execution" | "operations_review";
+export type RouteOperationalProgress = {
+  kind: "operational";
+  status: RouteOperationalStatus;
+  execution?: { state: string; currentSequence: number; resourceState: string };
+};
+export type RouteCheckoutProgress = (RouteProgress & { kind: "billing" }) | RouteOperationalProgress;
+export type RouteCheckoutAccess = { billingRead: boolean; authorizeRoute: boolean };

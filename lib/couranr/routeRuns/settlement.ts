@@ -5,7 +5,7 @@ import { assertServerOnly } from "@/lib/couranr/serverOnly";
 import { logServerFailure, newCorrelationId, type PublicErrorCode } from "@/lib/couranr/errors";
 import { applyVerifiedIntentState, isPaymentFailure } from "@/lib/couranr/payments/commands";
 import { intentMetadata, syntheticEventId, type ObligationForIntent } from "@/lib/couranr/payments/stripe";
-import type { RouteSettlementView } from "./types";
+import type { RouteOperationalStatus, RouteSettlementView } from "./types";
 
 assertServerOnly("lib/couranr/routeRuns/settlement.ts");
 
@@ -140,6 +140,24 @@ export async function readRouteSettlement(params: {
   return decoded ? { ok: true, value: decoded } :
     failure("readRouteSettlement", "invalid_settlement_projection",
       "Route checkout needs Couranr Support to reconcile its status.");
+}
+
+/** Separate SQL authority and a whitelist decoder; never pass raw RPC JSON to a non-billing caller. */
+export async function readRouteOperationalStatus(params: {
+  businessAccountId: string; actorUserId: string; routeRunId: string;
+}): Promise<Result<RouteOperationalStatus | null>> {
+  const r = await rpc("readRouteOperationalStatus", "couranr_read_route_run_operational_settlement", {
+    p_business_account_id: params.businessAccountId,
+    p_actor_user_id: params.actorUserId,
+    p_route_run_id: params.routeRunId,
+  });
+  if (r.ok === false) return r;
+  if (r.value === null) return { ok: true, value: null };
+  const status = record(r.value) ? r.value.status : null;
+  if (status === "payment_pending" || status === "ready_for_execution" ||
+      status === "operations_review") return { ok: true, value: status };
+  return failure("readRouteOperationalStatus", "invalid_operational_projection",
+    "Couranr could not confirm this Route's operational status.");
 }
 
 /** Merchant confirmation only; this command creates no provider charge or hold. */

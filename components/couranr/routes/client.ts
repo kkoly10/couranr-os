@@ -1,9 +1,9 @@
 import { call, type ApiResult } from "@/components/couranr/requests/client";
-import type { BusinessDeclaredValueView, RouteProgress, RouteRunView } from "@/lib/couranr/routeRuns/types";
+import type { BusinessDeclaredValueView, RouteCheckoutAccess, RouteCheckoutProgress, RouteProgress, RouteRunView } from "@/lib/couranr/routeRuns/types";
 
 const CHECKOUT_PATH = "/api/couranr/merchant/route-runs/checkout";
 export function fetchRouteProgress(input: { businessAccountId: string; routeRunId: string }):
-  Promise<ApiResult<{ progress: RouteProgress | null; checkoutAvailable: boolean }>> {
+  Promise<ApiResult<{ progress: RouteCheckoutProgress | null; access: RouteCheckoutAccess; checkoutAvailable: boolean }>> {
   return call(`${CHECKOUT_PATH}?businessAccountId=${encodeURIComponent(input.businessAccountId)}` +
     `&routeRunId=${encodeURIComponent(input.routeRunId)}`);
 }
@@ -11,7 +11,7 @@ export function routeCheckoutAction(input: {
   businessAccountId: string; routeRunId: string;
   action: "begin" | "advance" | "confirm_pickup_ready";
   expectedVersion?: number; idempotencyKey?: string;
-}): Promise<ApiResult<{ progress: RouteProgress }>> {
+}): Promise<ApiResult<{ progress: RouteProgress & { kind: "billing" } }>> {
   return call(CHECKOUT_PATH, { method: "POST", body: input });
 }
 

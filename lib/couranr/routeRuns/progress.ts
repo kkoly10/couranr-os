@@ -6,9 +6,9 @@ import {
 } from "@/lib/couranr/fulfillment/commands";
 import { readRouteDraft } from "./commands";
 import {
-  authorizeNextRouteChild, readRouteSettlement, releaseKnownRouteHolds,
+  authorizeNextRouteChild, readRouteOperationalStatus, readRouteSettlement, releaseKnownRouteHolds,
 } from "./settlement";
-import type { RouteProgress, RouteSettlementView } from "./types";
+import type { RouteOperationalProgress, RouteProgress, RouteSettlementView } from "./types";
 
 assertServerOnly("lib/couranr/routeRuns/progress.ts");
 
@@ -80,6 +80,34 @@ export async function readRouteProgress(params: Params): Promise<Result | { ok: 
     resourceState: resource.data.resource_state,
     stops,
   }) };
+}
+
+/** Read-only, billing-free progress for active Route members without billing.read. */
+export async function readOperationalRouteProgress(params: Params): Promise<
+  { ok: true; value: RouteOperationalProgress | null } | Failure
+> {
+  const read = await readRouteOperationalStatus(params);
+  if (read.ok === false) return read;
+  if (!read.value) return { ok: true, value: null };
+  const value: RouteOperationalProgress = { kind: "operational", status: read.value };
+  if (read.value !== "ready_for_execution") return { ok: true, value };
+  const [execution, resource] = await Promise.all([
+    supabaseAdmin.from("couranr_route_run_executions")
+      .select("execution_state,current_sequence")
+      .eq("route_run_id", params.routeRunId).maybeSingle(),
+    supabaseAdmin.from("couranr_route_run_resource_reservations")
+      .select("resource_state")
+      .eq("route_run_id", params.routeRunId).maybeSingle(),
+  ]);
+  if (execution.error || resource.error) return fail("readOperationalRouteProgress",
+    execution.error?.message ?? resource.error?.message,
+    "Couranr could not confirm this Route's execution status.");
+  if (execution.data && resource.data) value.execution = {
+    state: execution.data.execution_state,
+    currentSequence: execution.data.current_sequence,
+    resourceState: resource.data.resource_state,
+  };
+  return { ok: true, value };
 }
 
 async function rpcStep(operation: string, fn: string, args: Record<string, unknown>): Promise<Failure | null> {

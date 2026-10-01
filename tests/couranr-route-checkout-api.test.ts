@@ -3,7 +3,7 @@ import { NextRequest } from "next/server";
 
 const mocks = vi.hoisted(() => ({
   actor: vi.fn(), member: vi.fn(), may: vi.fn(), read: vi.fn(), begin: vi.fn(),
-  advance: vi.fn(), ready: vi.fn(),
+  operational: vi.fn(), advance: vi.fn(), ready: vi.fn(),
 }));
 vi.mock("@/lib/couranr/requests/actor", () => ({
   resolveRequestActor: mocks.actor,
@@ -13,7 +13,8 @@ vi.mock("@/lib/couranr/settings/commands", () => ({ settingsActorFrom: mocks.mem
 vi.mock("@/lib/couranr/settings/permissions", () => ({ memberMay: mocks.may }));
 vi.mock("@/lib/couranr/routeRuns/settlement", () => ({ beginRouteCheckout: mocks.begin }));
 vi.mock("@/lib/couranr/routeRuns/progress", () => ({
-  readRouteProgress: mocks.read, advanceRouteRun: mocks.advance,
+  readRouteProgress: mocks.read, readOperationalRouteProgress: mocks.operational,
+  advanceRouteRun: mocks.advance,
   confirmRoutePickupReady: mocks.ready,
 }));
 
@@ -32,9 +33,10 @@ beforeEach(() => {
   vi.stubEnv("VERCEL_ENV", "development");
   vi.clearAllMocks();
   mocks.actor.mockResolvedValue({ ok: true, userId: actorUserId });
-  mocks.member.mockReturnValue({ role: "owner" });
+  mocks.member.mockReturnValue({ role: "owner", status: "active" });
   mocks.may.mockReturnValue(true);
   mocks.read.mockResolvedValue({ ok: true, value: null });
+  mocks.operational.mockResolvedValue({ ok: true, value: null });
   mocks.begin.mockResolvedValue({ ok: true, value: {} });
   mocks.advance.mockResolvedValue({ ok: true, value: { next: "continue" } });
   mocks.ready.mockResolvedValue({ ok: true, value: { next: "continue" } });
@@ -48,6 +50,54 @@ describe("RR-003 checkout HTTP authority", () => {
     expect(response.headers.get("cache-control")).toBe("private, no-store");
     expect(mocks.read).toHaveBeenCalledWith({ businessAccountId, routeRunId, actorUserId });
     expect(mocks.begin).not.toHaveBeenCalled();
+  });
+
+  it.each(["owner", "manager", "billing"])("%s reads billing projection only with billing.read", async (role) => {
+    mocks.member.mockReturnValue({ role, status: "active" });
+    mocks.may.mockImplementation((_, capability: string) => capability === "billing.read" ||
+      (capability === "billing.authorize_route" && role !== "billing"));
+    mocks.read.mockResolvedValue({ ok: true, value: {
+      settlement: { card: { brand: "visa", last4: "4242" },
+        referenceTotalCents: 4000, items: [{ obligationId: "secret-obligation" }] }, next: "continue",
+    } });
+    const response = await GET(new NextRequest(`${endpoint}?businessAccountId=${businessAccountId}&routeRunId=${routeRunId}`));
+    const responseBody = await response.json();
+    expect(responseBody.progress.kind).toBe("billing");
+    expect(responseBody.progress.settlement.card.last4).toBe("4242");
+    expect(responseBody.progress.settlement.referenceTotalCents).toBe(4000);
+    expect(responseBody.access.authorizeRoute).toBe(role !== "billing");
+    expect(mocks.operational).not.toHaveBeenCalled();
+    if (role === "billing") {
+      expect((await POST(body({ action: "begin", expectedVersion: 1, idempotencyKey }))).status).toBe(403);
+      expect(mocks.begin).not.toHaveBeenCalled();
+    }
+  });
+
+  it.each(["dispatcher", "viewer"])("%s receives operational-only projection after checkout", async (role) => {
+    mocks.member.mockReturnValue({ role, status: "active" });
+    mocks.may.mockReturnValue(false);
+    mocks.operational.mockResolvedValue({ ok: true, value: {
+      kind: "operational", status: "payment_pending",
+    } });
+    const response = await GET(new NextRequest(`${endpoint}?businessAccountId=${businessAccountId}&routeRunId=${routeRunId}`));
+    const serialized = await response.text();
+    expect(response.status).toBe(200);
+    expect(serialized).toContain("payment_pending");
+    for (const forbidden of ["card", "last4", "obligationId", "providerPaymentIntentId",
+      "paymentMethodId", "SetupIntent", "customerId", "settlementId", "amountCents"]) {
+      expect(serialized).not.toContain(forbidden);
+    }
+    expect(mocks.read).not.toHaveBeenCalled();
+    expect((await POST(body({ action: "begin", expectedVersion: 1, idempotencyKey }))).status).toBe(403);
+  });
+
+  it("refuses a cross-business or inactive member before either settlement read", async () => {
+    mocks.member.mockReturnValue(null);
+    expect((await GET(new NextRequest(`${endpoint}?businessAccountId=${businessAccountId}&routeRunId=${routeRunId}`))).status).toBe(403);
+    mocks.member.mockReturnValue({ role: "owner", status: "disabled" });
+    expect((await GET(new NextRequest(`${endpoint}?businessAccountId=${businessAccountId}&routeRunId=${routeRunId}`))).status).toBe(403);
+    expect(mocks.read).not.toHaveBeenCalled();
+    expect(mocks.operational).not.toHaveBeenCalled();
   });
 
   it("never starts production money while physical Route execution is absent", async () => {
@@ -69,6 +119,7 @@ describe("RR-003 checkout HTTP authority", () => {
   });
 
   it("binds checkout to the displayed accepted generation and retry key", async () => {
+    mocks.read.mockResolvedValue({ ok: true, value: { next: "continue", settlement: {} } });
     const response = await POST(body({ action: "begin", expectedVersion: 2, idempotencyKey }));
     expect(response.status).toBe(200);
     expect(mocks.begin).toHaveBeenCalledWith({ businessAccountId, routeRunId,

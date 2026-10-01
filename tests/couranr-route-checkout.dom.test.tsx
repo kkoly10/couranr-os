@@ -1,5 +1,5 @@
 import * as React from "react";
-import { render, screen, waitFor } from "@testing-library/react";
+import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -24,6 +24,9 @@ const businessAccountId = "11111111-1111-4111-8111-111111111111";
 const routeRunId = "22222222-2222-4222-8222-222222222222";
 const props = { businessAccountId, routeRunId, acceptedVersion: 3,
   stopCount: 2, totalCents: 4000, mayPay: true };
+const payerAccess = { billingRead: true, authorizeRoute: true };
+const readerAccess = { billingRead: true, authorizeRoute: false };
+const operationalAccess = { billingRead: false, authorizeRoute: false };
 const settlement = (state: string, pickupReadyConfirmed = false) => ({
   settlementId: "33333333-3333-4333-8333-333333333333",
   routeRunId, state, version: 1, referenceTotalCents: 4000,
@@ -32,12 +35,14 @@ const settlement = (state: string, pickupReadyConfirmed = false) => ({
   items: [],
 });
 const progress = (state: string, next: string, pickupReadyConfirmed = false,
-  actionClientSecret?: string) => ({ settlement: settlement(state, pickupReadyConfirmed),
+  actionClientSecret?: string) => ({ kind: "billing", settlement: settlement(state, pickupReadyConfirmed),
     next, ...(actionClientSecret ? { actionClientSecret } : {}) });
 
 beforeEach(() => {
   vi.clearAllMocks();
-  mocks.fetch.mockResolvedValue({ ok: true, value: { progress: null, checkoutAvailable: true } });
+  mocks.fetch.mockResolvedValue({ ok: true, value: {
+    progress: null, access: payerAccess, checkoutAvailable: true,
+  } });
   mocks.call.mockResolvedValue({ ok: true, value: { paymentMethod: {
     state: "ready", brand: "visa", last4: "4242",
   } } });
@@ -47,7 +52,7 @@ beforeEach(() => {
 describe("RR-003 merchant Route checkout", () => {
   it("shows a truthful non-operational state without a payment action", async () => {
     mocks.fetch.mockResolvedValue({ ok: true, value: {
-      progress: null, checkoutAvailable: false,
+      progress: null, access: payerAccess, checkoutAvailable: false,
     } });
     render(<RouteCheckoutPanel {...props} />);
     await screen.findByText(/Route checkout is not available yet/);
@@ -75,13 +80,14 @@ describe("RR-003 merchant Route checkout", () => {
     expect(request).not.toHaveProperty("paymentMethodId");
   });
 
-  it("lets viewers read settlement status but never start payment", async () => {
+  it("shows billing readers full status but no payment action", async () => {
     mocks.fetch.mockResolvedValue({ ok: true, value: {
       progress: progress("authorized", "confirm_pickup_ready"),
-      checkoutAvailable: true,
+      access: readerAccess, checkoutAvailable: true,
     } });
     render(<RouteCheckoutPanel {...props} mayPay={false} />);
     await screen.findByText(/Only a business owner or manager can authorize Route payment/);
+    expect(screen.getByText(/visa ending in 4242/)).toBeTruthy();
     expect(screen.queryByRole("button", { name: "Confirm Route checkout" })).toBeNull();
     expect(screen.queryByRole("button", { name: "Confirm pickup readiness and continue" })).toBeNull();
     expect(mocks.action).not.toHaveBeenCalled();
@@ -91,7 +97,7 @@ describe("RR-003 merchant Route checkout", () => {
     const user = userEvent.setup();
     mocks.fetch.mockResolvedValue({ ok: true, value: {
       progress: progress("authorized", "confirm_pickup_ready"),
-      checkoutAvailable: true,
+      access: payerAccess, checkoutAvailable: true,
     } });
     mocks.action.mockResolvedValue({ ok: true, value: {
       progress: progress("authorized", "confirm_pickup_ready", true),
@@ -109,7 +115,7 @@ describe("RR-003 merchant Route checkout", () => {
     const user = userEvent.setup();
     mocks.fetch.mockResolvedValue({ ok: true, value: {
       progress: progress("authorization_required", "authenticate_card"),
-      checkoutAvailable: true,
+      access: payerAccess, checkoutAvailable: true,
     } });
     mocks.action.mockResolvedValueOnce({ ok: true, value: {
       progress: progress("authorization_required", "authenticate_card", false, "pi_existing_secret"),
@@ -127,7 +133,7 @@ describe("RR-003 merchant Route checkout", () => {
   it("does not offer a retry button for an ambiguous child capture", async () => {
     mocks.fetch.mockResolvedValue({ ok: true, value: {
       progress: progress("capture_pending", "operations_review"),
-      checkoutAvailable: true,
+      access: payerAccess, checkoutAvailable: true,
     } });
     render(<RouteCheckoutPanel {...props} />);
     await screen.findByText(/Do not start pickup/);
@@ -141,7 +147,7 @@ describe("RR-003 merchant Route checkout", () => {
         state: "completed", currentSequence: 2, resourceState: "released",
         stops: [{ sequence: 1, fulfillmentState: "delivered" },
           { sequence: 2, fulfillmentState: "delivered" }],
-      } }, checkoutAvailable: true,
+      } }, access: payerAccess, checkoutAvailable: true,
     } });
     render(<RouteCheckoutPanel {...props} />);
     await screen.findByText("Route completed");
@@ -150,5 +156,60 @@ describe("RR-003 merchant Route checkout", () => {
     expect(screen.getByText(/Shared resource: released/)).toBeTruthy();
     expect(screen.queryByRole("button", { name: "Continue Route checkout" })).toBeNull();
     expect(mocks.action).not.toHaveBeenCalled();
+  });
+
+  it.each(["dispatcher", "viewer"])("%s sees only coarse operational status after checkout", async () => {
+    mocks.fetch.mockResolvedValue({ ok: true, value: {
+      progress: { kind: "operational", status: "payment_pending" },
+      access: operationalAccess, checkoutAvailable: true,
+    } });
+    render(<RouteCheckoutPanel {...props} mayPay={false} />);
+    await screen.findByText("Route payment is being prepared.");
+    const body = document.body.textContent ?? "";
+    expect(body).not.toContain("4242");
+    expect(body).not.toContain("$40.00");
+    expect(body).not.toContain("Save a business card first");
+    expect(mocks.call).not.toHaveBeenCalled();
+    expect(mocks.action).not.toHaveBeenCalled();
+  });
+
+  it("discards an older full billing GET after a later role-downgrade refresh", async () => {
+    let resolveOld: ((value: unknown) => void) | undefined;
+    mocks.fetch.mockImplementationOnce(() => new Promise((resolve) => { resolveOld = resolve; }))
+      .mockResolvedValueOnce({ ok: true, value: {
+        progress: { kind: "operational", status: "operations_review" },
+        access: operationalAccess, checkoutAvailable: true,
+      } });
+    const { rerender } = render(<RouteCheckoutPanel {...props} />);
+    await waitFor(() => expect(mocks.fetch).toHaveBeenCalledTimes(1));
+    rerender(<RouteCheckoutPanel {...props} mayPay={false} />);
+    await waitFor(() => expect(mocks.fetch).toHaveBeenCalledTimes(2));
+    await screen.findByText("Couranr Operations is reviewing payment.");
+    await act(async () => resolveOld?.({ ok: true, value: {
+      progress: progress("authorized", "confirm_pickup_ready"),
+      access: payerAccess, checkoutAvailable: true,
+    } }));
+    expect(document.body.textContent).not.toContain("4242");
+    expect(screen.getByText("Couranr Operations is reviewing payment.")).toBeTruthy();
+  });
+
+  it("clears visible card details while the downgraded role refresh is pending", async () => {
+    let resolveDowngraded: ((value: unknown) => void) | undefined;
+    mocks.fetch.mockResolvedValueOnce({ ok: true, value: {
+      progress: progress("authorized", "confirm_pickup_ready"),
+      access: payerAccess, checkoutAvailable: true,
+    } }).mockImplementationOnce(() => new Promise((resolve) => { resolveDowngraded = resolve; }));
+    const user = userEvent.setup();
+    render(<RouteCheckoutPanel {...props} />);
+    await screen.findByText(/visa ending in 4242/);
+    await user.click(screen.getByRole("button", { name: "Refresh checkout status" }));
+    expect(document.body.textContent).not.toContain("4242");
+    await act(async () => resolveDowngraded?.({ ok: true, value: {
+      progress: { kind: "operational", status: "payment_pending" },
+      access: operationalAccess, checkoutAvailable: true,
+    } }));
+    await screen.findByText("Route payment is being prepared.");
+    expect(document.body.textContent).not.toContain("4242");
+    expect(screen.queryByRole("button", { name: "Continue Route checkout" })).toBeNull();
   });
 });

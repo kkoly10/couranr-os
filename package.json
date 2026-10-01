@@ -61,6 +61,7 @@
     "test:route-run-merchant": "node e2e/disposable/routeRunMerchant.mjs",
     "test:rr003-business-payment": "node e2e/disposable/businessPaymentMethod.mjs",
     "test:rr003-route-settlement": "node e2e/disposable/routeRunSettlement.mjs",
+    "test:rr003-route-read-authority": "node e2e/disposable/routeSettlementReadAuthority.mjs",
     "test:rr003-route-resource": "node e2e/disposable/routeRunResource.mjs",
     "test:rr003-route-readiness": "node e2e/disposable/routeRunPickupReadiness.mjs",
     "test:rr003-route-plans": "node e2e/disposable/routeRunServicePlans.mjs",

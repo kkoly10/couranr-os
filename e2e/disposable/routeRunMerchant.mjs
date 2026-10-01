@@ -205,9 +205,22 @@ async function main() {
     const business = sql("insert into public.business_accounts(name,status) values('RR002 Browser Shop','active') returning id");
     const owner = makeUser("rr002-browser-owner@couranr.invalid");
     const viewer = makeUser("rr002-browser-viewer@couranr.invalid");
+    const manager = makeUser("rr003-browser-manager@couranr.invalid");
+    const billing = makeUser("rr003-browser-billing@couranr.invalid");
+    const dispatcher = makeUser("rr003-browser-dispatcher@couranr.invalid");
+    const former = makeUser("rr003-browser-former@couranr.invalid");
+    const outsider = makeUser("rr003-browser-outsider@couranr.invalid");
+    const demotedOwner = makeUser("rr003-browser-demoted-owner@couranr.invalid");
+    const otherBusiness = sql("insert into public.business_accounts(name,status) values('RR003 Other Browser Shop','active') returning id");
     sql(`insert into public.business_members(business_account_id,user_id,role,status) values
       ('${business}','${owner}','owner','active'),
-      ('${business}','${viewer}','viewer','active')`);
+      ('${business}','${viewer}','viewer','active'),
+      ('${business}','${manager}','manager','active'),
+      ('${business}','${billing}','billing','active'),
+      ('${business}','${dispatcher}','dispatcher','active'),
+      ('${business}','${former}','viewer','disabled'),
+      ('${business}','${demotedOwner}','owner','active'),
+      ('${otherBusiness}','${outsider}','owner','active')`);
 
     const transport = psqlTransport(psql);
     const commonPickup = {
@@ -267,7 +280,7 @@ async function main() {
       return page;
     }
 
-    async function authenticatedPost(page, pathname, body) {
+    async function authenticatedToken(page) {
       // APIRequestContext shares cookies but canonical APIs require the Bearer
       // token that the browser client normally attaches. Read this disposable
       // user's @supabase/ssr session; never print or persist the token.
@@ -281,9 +294,18 @@ async function main() {
       if (!encoded.startsWith("base64-")) throw new Error("authenticated browser session missing");
       const session = JSON.parse(Buffer.from(encoded.slice(7), "base64url").toString());
       if (!session.access_token) throw new Error("authenticated browser token missing");
+      return session.access_token;
+    }
+
+    async function authenticatedPost(page, pathname, body) {
       return page.request.post(`${BASE}${pathname}`, {
-        headers: { authorization: `Bearer ${session.access_token}` },
+        headers: { authorization: `Bearer ${await authenticatedToken(page)}` },
         ...(body === undefined ? {} : { data: body }),
+      });
+    }
+    async function authenticatedGet(page, pathname) {
+      return page.request.get(`${BASE}${pathname}`, {
+        headers: { authorization: `Bearer ${await authenticatedToken(page)}` },
       });
     }
 
@@ -360,7 +382,7 @@ async function main() {
     check("B27", "viewer cannot start Route checkout",
       await viewerPage.getByRole("button", { name: "Confirm Route checkout" }).count() === 0);
     check("B28", "viewer sees unstarted checkout without a saved-card prompt",
-      await viewerPage.getByText("Checkout has not started.", { exact: true }).isVisible() &&
+      await viewerPage.getByText("Route payment has not started.", { exact: true }).isVisible() &&
       await viewerPage.getByText("Save a business card first", { exact: true }).count() === 0);
     await ownerPage.getByRole("button", { name: "Cancel accepted Route Run" }).click();
     check("B19", "owner sees release and no-payment consequence before cancellation",
@@ -424,6 +446,90 @@ async function main() {
       blockedProviderSteps === 1, String(blockedProviderSteps));
     check("B32", "confirming checkout without advancing calls no live Stripe endpoint",
       stripeRequests.length === 0, String(stripeRequests.length));
+
+    // Post-checkout read authority: use real authenticated GET responses, not
+    // component stubs. No role below is allowed to advance the provider step.
+    const checkoutPath = `/api/couranr/merchant/route-runs/checkout?businessAccountId=${business}&routeRunId=${checkoutRoute}`;
+    const checkoutProjection = JSON.parse(sql(`select public.couranr_read_route_run_settlement(
+      '${business}','${owner}','${checkoutRoute}')`));
+    const ownerRead = await authenticatedGet(ownerPage, checkoutPath);
+    const ownerStatus = await ownerRead.json();
+    check("B65", "owner after checkout reads exact card and Route total",
+      ownerRead.ok() && ownerStatus.progress?.kind === "billing" &&
+      ownerStatus.progress.settlement.card.last4 === "4242" &&
+      ownerStatus.progress.settlement.referenceTotalCents === 4000 &&
+      ownerStatus.access.authorizeRoute === true);
+    const managerPage = await signIn("rr003-browser-manager@couranr.invalid");
+    const managerRead = await authenticatedGet(managerPage, checkoutPath);
+    const managerStatus = await managerRead.json();
+    check("B66", "manager after checkout reads billing and retains authorize capability",
+      managerRead.ok() && managerStatus.progress?.kind === "billing" &&
+      managerStatus.progress.settlement.card.last4 === "4242" &&
+      managerStatus.access.authorizeRoute === true);
+    const billingPage = await signIn("rr003-browser-billing@couranr.invalid");
+    const billingRead = await authenticatedGet(billingPage, checkoutPath);
+    const billingStatus = await billingRead.json();
+    check("B67", "billing contact reads billing truth without authorization",
+      billingRead.ok() && billingStatus.progress?.kind === "billing" &&
+      billingStatus.progress.settlement.card.last4 === "4242" &&
+      billingStatus.access.authorizeRoute === false);
+    const billingPost = await authenticatedPost(billingPage,
+      "/api/couranr/merchant/route-runs/checkout",
+      { businessAccountId: business, routeRunId: checkoutRoute, action: "advance" });
+    check("B68", "billing contact cannot advance Route money", billingPost.status() === 403);
+    await billingPage.goto(`${BASE}/app/business/routes/${checkoutRoute}?businessAccountId=${business}`,
+      { waitUntil: "domcontentloaded" });
+    await billingPage.getByText(/visa ending in 4242/).waitFor({ state: "visible" });
+    check("B69", "billing UI is read-only despite full billing read",
+      await billingPage.getByRole("button", { name: "Continue Route checkout" }).count() === 0);
+
+    const forbiddenBilling = ["4242", "visa", checkoutProjection.settlementId,
+      ...checkoutProjection.items.map((item) => item.obligationId),
+      "obligationId", "providerPaymentIntentId", "paymentMethodId", "SetupIntent",
+      "customerId", "settlementId", "amountCents"];
+    const dispatcherPage = await signIn("rr003-browser-dispatcher@couranr.invalid");
+    for (const [label, page, number] of [
+      ["dispatcher", dispatcherPage, "B70"], ["viewer", viewerPage, "B71"],
+    ]) {
+      const status = await authenticatedGet(page, checkoutPath);
+      const payload = await status.text();
+      check(number, `${label} GET after checkout has only operational status`,
+        status.ok() && JSON.parse(payload).progress?.kind === "operational" &&
+        JSON.parse(payload).progress?.status === "payment_pending" &&
+        forbiddenBilling.every((secret) => !payload.includes(secret)));
+      await page.goto(`${BASE}/app/business/routes/${checkoutRoute}?businessAccountId=${business}`,
+        { waitUntil: "domcontentloaded" });
+      await page.getByText("Route payment is being prepared.", { exact: true })
+        .waitFor({ state: "visible", timeout: 30_000 });
+      check(label === "dispatcher" ? "B72" : "B73",
+        `${label} rendered Route has no card evidence or payment controls`,
+        !(await page.locator("body").innerText()).includes("4242") &&
+        await page.getByRole("button", { name: "Continue Route checkout" }).count() === 0 &&
+        await page.getByText("Save a business card first", { exact: true }).count() === 0);
+    }
+    const formerPage = await signIn("rr003-browser-former@couranr.invalid");
+    const outsiderPage = await signIn("rr003-browser-outsider@couranr.invalid");
+    check("B74", "inactive/former member receives no settlement or operational read",
+      (await authenticatedGet(formerPage, checkoutPath)).status() === 403);
+    check("B75", "cross-business member receives no Route checkout data",
+      (await authenticatedGet(outsiderPage, checkoutPath)).status() === 403);
+    const demotedPage = await signIn("rr003-browser-demoted-owner@couranr.invalid");
+    const beforeDemotion = await authenticatedGet(demotedPage, checkoutPath);
+    check("B76", "active owner has billing read before role change",
+      (await beforeDemotion.json()).progress?.kind === "billing");
+    sql(`update public.business_members set role='viewer' where business_account_id='${business}'
+      and user_id='${demotedOwner}'`);
+    const afterDemotion = await authenticatedGet(demotedPage, checkoutPath);
+    const afterPayload = await afterDemotion.text();
+    check("B77", "next GET after owner-to-viewer downgrade loses billing immediately",
+      afterDemotion.ok() && JSON.parse(afterPayload).progress?.kind === "operational" &&
+      forbiddenBilling.every((secret) => !afterPayload.includes(secret)));
+    await demotedPage.goto(`${BASE}/app/business/routes/${checkoutRoute}?businessAccountId=${business}`,
+      { waitUntil: "domcontentloaded" });
+    await demotedPage.getByText("Route payment is being prepared.", { exact: true })
+      .waitFor({ state: "visible", timeout: 30_000 });
+    check("B78", "downgraded owner's refreshed page is operational-only",
+      !(await demotedPage.locator("body").innerText()).includes("4242"));
 
     // RR-004 authenticated physical choreography. Payment/proof rows are
     // disposable provider/evidence doubles: the browser exercises Route

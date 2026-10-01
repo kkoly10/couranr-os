@@ -202,6 +202,7 @@ const STAGES = [
     ["test:route-run-acceptance", "RR-002 accepted Route Run — atomic child claims, quote approval, risk gates, races and no booking side effects"],
     ["test:rr003-business-payment", "RR-003a saved Business card foundation — tenant/role isolation, durable consent, setup idempotency, stale attempt refusal, safe rollback"],
     ["test:rr003-route-settlement", "RR-003b Route checkout settlement — exact accepted version, child obligations, provider-unknown recovery and no execution side effects"],
+    ["test:rr003-route-read-authority", "RR-003 least-privilege settlement read — post-checkout role isolation, redaction and SQL ACLs"],
     ["test:rr003-route-resource", "RR-003c Route-owned resource reservation — aggregate capacity, ordinary dispatch exclusion, tenure and rollback refusal"],
     ["test:rr003-route-readiness", "RR-003d Route pickup readiness — explicit merchant attestation, exact child authorization, atomic canonical readiness and rollback refusal"],
     ["test:rr003-route-plans", "RR-003d Route-owned canonical plans — common pickup window, resource identity, standalone bypass refusal and rollback safety"],
@@ -258,6 +259,7 @@ const STAGES = [
         "test:foundation-rollbacks",
         "test:route-run-foundation",
         "test:route-run-acceptance",
+        "test:rr003-route-read-authority",
         "test:rr003-business-payment",
         "test:rr003-route-settlement",
         "test:rr003-route-resource",
@@ -336,8 +338,8 @@ const STAGES = [
     settle: settleDisposablePorts,
     assert: (out) => {
       const m = out.match(/Route Run Merchant Browser: (\d+)\/(\d+) checks PASS\./);
-      if (!m || m[1] !== "64" || m[2] !== "64") {
-        return "Route Run requires its complete 64/64 authenticated browser tally";
+      if (!m || m[1] !== "78" || m[2] !== "78") {
+        return "Route Run requires its complete 78/78 authenticated browser tally";
       }
       if (!out.includes("RR-002 cleanup: Next, gateway, PostgREST and PostgreSQL stopped; disposable build removed.")) {
         return "RR-002 did not confirm clean process teardown";

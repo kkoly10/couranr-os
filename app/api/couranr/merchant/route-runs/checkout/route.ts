@@ -5,7 +5,7 @@ import { settingsActorFrom } from "@/lib/couranr/settings/commands";
 import { memberMay } from "@/lib/couranr/settings/permissions";
 import { isRouteRunId } from "@/lib/couranr/routeRuns/draft";
 import { beginRouteCheckout } from "@/lib/couranr/routeRuns/settlement";
-import { advanceRouteRun, confirmRoutePickupReady, readRouteProgress } from "@/lib/couranr/routeRuns/progress";
+import { advanceRouteRun, confirmRoutePickupReady, readOperationalRouteProgress, readRouteProgress } from "@/lib/couranr/routeRuns/progress";
 
 export const dynamic = "force-dynamic";
 // RR-003 cannot take production money until RR-004 can physically execute a
@@ -24,9 +24,20 @@ export async function GET(req: NextRequest) {
   }
   const actor = await resolveRequestActor(req, businessAccountId);
   if (isActorDenied(actor)) return routeFailure(actor.code, actor.error);
-  const result = await readRouteProgress({ businessAccountId, actorUserId: actor.userId, routeRunId });
-  return result.ok === false ? failureResponse(result) : response({
-    progress: result.value, checkoutAvailable: checkoutAvailable(),
+  const member = settingsActorFrom(actor);
+  if (!member || member.status !== "active") {
+    return routeFailure("not_permitted", "You do not have access to this Route.");
+  }
+  const billingRead = memberMay(member, "billing.read");
+  const authorizeRoute = billingRead && memberMay(member, "billing.authorize_route");
+  const params = { businessAccountId, actorUserId: actor.userId, routeRunId };
+  const result = billingRead ? await readRouteProgress(params) : await readOperationalRouteProgress(params);
+  if (result.ok === false) return failureResponse(result);
+  return response({
+    progress: result.value === null ? null : billingRead
+      ? { ...result.value, kind: "billing" } : result.value,
+    access: { billingRead, authorizeRoute },
+    checkoutAvailable: checkoutAvailable(),
   });
 }
 
@@ -73,10 +84,15 @@ export async function POST(req: NextRequest) {
     });
     if (begun.ok === false) return failureResponse(begun);
     const progress = await readRouteProgress(params);
-    return progress.ok === false ? failureResponse(progress) : response({ progress: progress.value });
+    if (progress.ok === false) return failureResponse(progress);
+    if (progress.value === null) return routeFailure("conflict",
+      "Couranr could not confirm this Route checkout. Refresh its status.");
+    return response({ progress: { ...progress.value, kind: "billing" } });
   }
   const result = input.action === "confirm_pickup_ready"
     ? await confirmRoutePickupReady({ ...params, expectedVersion: input.expectedVersion as number })
     : await advanceRouteRun(params);
-  return result.ok === false ? failureResponse(result) : response({ progress: result.value });
+  return result.ok === false ? failureResponse(result) : response({
+    progress: { ...result.value, kind: "billing" },
+  });
 }

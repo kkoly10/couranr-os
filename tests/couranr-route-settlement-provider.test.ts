@@ -20,7 +20,7 @@ vi.mock("@/lib/couranr/payments/commands", () => ({
   isPaymentFailure: (r: { ok: boolean }) => r.ok === false,
 }));
 
-import { authorizeNextRouteChild, beginRouteCheckout, releaseKnownRouteHolds } from "@/lib/couranr/routeRuns/settlement";
+import { authorizeNextRouteChild, beginRouteCheckout, readRouteOperationalStatus, releaseKnownRouteHolds } from "@/lib/couranr/routeRuns/settlement";
 
 const business = "11111111-1111-4111-8111-111111111111";
 const actor = "22222222-2222-4222-8222-222222222222";
@@ -106,6 +106,20 @@ beforeEach(() => {
 });
 
 describe("RR-003b saved-card child authorization", () => {
+  it("whitelists the operational RPC shape even if it returns unexpected billing fields", async () => {
+    mocks.rpc.mockImplementation(async (fn: string) => fn === "couranr_read_route_run_operational_settlement"
+      ? ok({ status: "payment_pending", ...baseView,
+        providerPaymentIntentId: "pi_secret", paymentMethodId: "pm_secret" })
+      : ok(baseView));
+    const result = await readRouteOperationalStatus(params);
+    expect(result).toEqual({ ok: true, value: "payment_pending" });
+    expect(JSON.stringify(result)).not.toContain("4242");
+    expect(JSON.stringify(result)).not.toContain("obligationId");
+    expect(mocks.rpc).toHaveBeenCalledWith("couranr_read_route_run_operational_settlement", {
+      p_business_account_id: business, p_actor_user_id: actor, p_route_run_id: route,
+    });
+  });
+
   it("checkout confirmation creates no provider call and shows no provider IDs", async () => {
     const r = await beginRouteCheckout({ ...params, expectedVersion: 1,
       idempotencyKey: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb" });

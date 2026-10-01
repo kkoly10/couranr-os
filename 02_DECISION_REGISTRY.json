@@ -4072,6 +4072,13 @@
           "resource_order": "all authorizations -> one Route resource reservation -> child captures -> canonical child deliveries",
           "partial_capture": "recovery_required; no physical execution until provider recovery/compensation converges"
         },
+        "read_authority": {
+          "principle": "Route membership does not imply billing visibility. Route operational status and billing/payment detail are separate server authorities.",
+          "full_billing_projection": ["owner", "manager", "billing"],
+          "authorize_checkout": ["owner", "manager"],
+          "operational_only_projection": ["dispatcher", "viewer"],
+          "operational_exclusions": "No saved-card evidence, child payment records or amounts, obligation or provider identifiers"
+        },
         "resource_owner": {
           "scope": "one driver + one compatible vehicle for the Route",
           "aggregate_capacity": "server-derived from all child shipment evidence",

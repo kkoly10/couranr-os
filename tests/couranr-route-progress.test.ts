@@ -3,11 +3,12 @@ import type { RouteSettlementView } from "@/lib/couranr/routeRuns/types";
 
 const mocks = vi.hoisted(() => ({
   rpc: vi.fn(), from: vi.fn(), read: vi.fn(), authorize: vi.fn(), release: vi.fn(),
-  route: vi.fn(), capture: vi.fn(), reconcileCapture: vi.fn(),
+  operational: vi.fn(), route: vi.fn(), capture: vi.fn(), reconcileCapture: vi.fn(),
 }));
 vi.mock("@/lib/supabaseAdmin", () => ({ supabaseAdmin: { rpc: mocks.rpc, from: mocks.from } }));
 vi.mock("@/lib/couranr/routeRuns/settlement", () => ({
   readRouteSettlement: mocks.read,
+  readRouteOperationalStatus: mocks.operational,
   authorizeNextRouteChild: mocks.authorize,
   releaseKnownRouteHolds: mocks.release,
 }));
@@ -19,7 +20,8 @@ vi.mock("@/lib/couranr/fulfillment/commands", () => ({
 }));
 
 import {
-  advanceRouteRun, confirmRoutePickupReady, readRouteProgress, runRouteCheckoutMaintenance,
+  advanceRouteRun, confirmRoutePickupReady, readOperationalRouteProgress,
+  readRouteProgress, runRouteCheckoutMaintenance,
 } from "@/lib/couranr/routeRuns/progress";
 
 const businessAccountId = "11111111-1111-4111-8111-111111111111";
@@ -63,6 +65,16 @@ beforeEach(() => {
 });
 
 describe("RR-003 server-owned checkout progression", () => {
+  it("returns only coarse operational status without invoking the full billing read", async () => {
+    mocks.operational.mockResolvedValue({ ok: true, value: "payment_pending" });
+    const result = await readOperationalRouteProgress(params);
+    expect(result).toEqual({ ok: true, value: {
+      kind: "operational", status: "payment_pending",
+    } });
+    expect(mocks.read).not.toHaveBeenCalled();
+    expect(mocks.from).not.toHaveBeenCalled();
+  });
+
   it("does not reserve a resource or capture before explicit pickup readiness", async () => {
     mocks.read.mockResolvedValue({ ok: true, value: settlement("authorized") });
     const result = await advanceRouteRun(params);
