@@ -39,6 +39,7 @@ import { CouranrPaymentElement } from "@/components/couranr/payments/CouranrPaym
 import { DriverFeedbackPanel } from "@/components/couranr/driver/DriverFeedbackPanel";
 import { formatCents } from "@/lib/couranr/requests/view";
 import { STAGE_LABELS, stageForFulfillmentState } from "@/lib/couranr/tracking/states";
+import { trackSubmittedSameDayLead } from "@/lib/couranr/marketing/measurement";
 
 /**
  * PUB-004's `/send` flow — presentation and state only.
@@ -837,6 +838,7 @@ export function SendFlow({
         setPayment("failed");
         return;
       }
+      trackSubmittedSameDayLead(outcome.requestId);
       clearDraftStorage();
       const auth = await adapters.authorizePayment();
       if (auth.state === "authorization-required") {

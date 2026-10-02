@@ -1,5 +1,6 @@
 import * as React from "react";
 import { PublicShell } from "@/components/couranr/shell/shells";
+import { SameDayMarketingMeasurement } from "@/components/analytics/SameDayMarketingMeasurement";
 
 /**
  * Couranr Same Day: PUB-013 at /sameday and PUB-004's direct-consumer routes.
@@ -13,5 +14,14 @@ export default function ConsumerPublicLayout({
 }: {
   children: React.ReactNode;
 }) {
-  return <PublicShell variant="consumer">{children}</PublicShell>;
+  const production = process.env.VERCEL_ENV === "production";
+  return (
+    <PublicShell variant="consumer">
+      {children}
+      <SameDayMarketingMeasurement
+        gaId={production ? process.env.COURANR_GA4_MEASUREMENT_ID ?? null : null}
+        pixelId={production ? process.env.COURANR_META_PIXEL_ID ?? null : null}
+      />
+    </PublicShell>
+  );
 }

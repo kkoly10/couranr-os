@@ -110,6 +110,12 @@ export default function PrivacyPage() {
           We may use cookies and similar technologies for authentication, security, and basic analytics. You can control cookies through your browser settings,
           but some features may not work properly.
         </p>
+        <p>
+          On Couranr Same Day pages, Google Analytics and Meta Pixel load only if you choose “Allow measurement.” They may use cookies
+          and device information to measure page visits and submitted delivery requests. Couranr does not intentionally send your
+          name, contact details, delivery addresses, payment details, or request ID as marketing-event parameters. You can choose
+          “Not now” without affecting your delivery request, and change your choice using “Tracking preferences” on those pages.
+        </p>
 
         <h3>11. Children’s privacy</h3>
         <p>

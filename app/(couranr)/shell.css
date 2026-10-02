@@ -723,3 +723,36 @@
   margin-block: var(--couranr-space-3);
   font-size: var(--couranr-text-sm);
 }
+
+/* Optional Same Day acquisition measurement. Keep the choice reachable while
+   avoiding a full-width overlay across the order form on small screens. */
+.cr-marketing-consent {
+  position: fixed;
+  z-index: 100;
+  inset-inline: max(1rem, env(safe-area-inset-left)) max(1rem, env(safe-area-inset-right));
+  bottom: max(1rem, env(safe-area-inset-bottom));
+  max-width: 42rem;
+  margin-inline: auto;
+  padding: 1rem 1.25rem;
+  border: 1px solid var(--couranr-border, #d5d9df);
+  border-radius: 0.75rem;
+  background: #fff;
+  box-shadow: 0 1rem 3rem rgb(14 26 43 / 18%);
+  color: var(--couranr-navy, #0e1a2b);
+}
+.cr-marketing-consent p { margin: 0.4rem 0 0; font-size: 0.875rem; line-height: 1.5; }
+.cr-marketing-consent__actions { display: flex; gap: 0.75rem; flex-wrap: wrap; margin-top: 0.85rem; }
+.cr-marketing-consent__actions button,
+.cr-marketing-consent-link {
+  min-height: 2.75rem;
+  padding: 0.45rem 0.9rem;
+  border: 1px solid currentColor;
+  border-radius: 0.5rem;
+  background: #fff;
+  color: var(--couranr-navy, #0e1a2b);
+  cursor: pointer;
+}
+.cr-marketing-consent__actions button:last-child { background: var(--couranr-navy, #0e1a2b); color: #fff; }
+.cr-marketing-consent-link { position: fixed; z-index: 90; right: 1rem; bottom: 1rem; font-size: 0.75rem; }
+.cr-marketing-consent button:focus-visible,
+.cr-marketing-consent-link:focus-visible { outline: 3px solid var(--couranr-gold, #efb83f); outline-offset: 2px; }
